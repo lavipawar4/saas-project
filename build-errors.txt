@@ -1,0 +1,95 @@
+﻿
+> review-management-saas@0.1.0 build
+> next build
+
+  Γû▓ Next.js 14.2.18
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+ Γ£ô Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+node.exe : [Resend] 
+RESEND_API_KEY is 
+not set ΓÇö emails 
+will not be sent.
+At line:1 char:1
++ & "C:\Program Files
+\nodejs/node.exe" 
+"C:\Program 
+Files\nodejs/node_mo 
+...
++ ~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~
+    + CategoryInfo   
+           : NotSpe  
+  cified: ([Resend   
+ ] RESEND...ll no    
+t be sent.:Strin    
+g) [], RemoteExc    
+eption
+    + FullyQualified 
+   ErrorId : Native  
+  CommandError
+ 
+[Resend] 
+RESEND_API_KEY is 
+not set ΓÇö emails 
+will not be sent.
+[Resend] 
+RESEND_API_KEY is 
+not set ΓÇö emails 
+will not be sent.
+[Resend] 
+RESEND_API_KEY is 
+not set ΓÇö emails 
+will not be sent.
+   Generating static pages (0/19) ...
+   Generating static pages (4/19) 
+   Generating static pages (9/19) 
+   Generating static pages (14/19) 
+[Resend] 
+RESEND_API_KEY is 
+not set ΓÇö emails 
+will not be sent.
+[Resend] 
+RESEND_API_KEY is 
+not set ΓÇö emails 
+will not be sent.
+ Γ£ô Generating static pages (19/19)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                              Size     First Load JS
+Γöî Γùï /                                    3.21 kB        97.6 kB
+Γö£ Γùï /_not-found                          873 B          88.1 kB
+Γö£ ╞Æ /api/auth/google/callback            0 B                0 B
+Γö£ ╞Æ /api/auth/google/connect             0 B                0 B
+Γö£ ╞Æ /api/cron/auto-respond               0 B                0 B
+Γö£ ╞Æ /api/reviews/[reviewId]/draft        0 B                0 B
+Γö£ ╞Æ /api/reviews/batch-generate          0 B                0 B
+Γö£ ╞Æ /api/stripe/checkout                 0 B                0 B
+Γö£ ╞Æ /api/stripe/portal                   0 B                0 B
+Γö£ ╞Æ /api/stripe/webhook                  0 B                0 B
+Γö£ ╞Æ /api/webhooks/test-email             0 B                0 B
+Γö£ ╞Æ /dashboard                           7.24 kB         106 kB
+Γö£ ╞Æ /dashboard/analytics                 138 B          87.3 kB
+Γö£ ╞Æ /dashboard/reviews/[id]              194 B            99 kB
+Γö£ Γùï /login                               1.63 kB         151 kB
+Γö£ Γùï /onboarding                          5.68 kB        92.9 kB
+Γö£ ╞Æ /pricing                             1.04 kB        95.5 kB
+Γö£ ╞Æ /settings                            3.87 kB        91.1 kB
+Γöö Γùï /signup                              1.94 kB         151 kB
++ First Load JS shared by all            87.2 kB
+  Γö£ chunks/117-2fbd598ef9912c03.js       31.6 kB
+  Γö£ chunks/fd9d1056-9b74d67df9eeba04.js  53.6 kB
+  Γöö other shared chunks (total)          1.95 kB
+
+
+╞Æ Middleware                             73.7 kB
+
+Γùï  (Static)   prerendered as static content
+╞Æ  (Dynamic)  server-rendered on demand
+
