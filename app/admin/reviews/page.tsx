@@ -69,7 +69,7 @@ export default async function AdminReviewsPage() {
                                         ))}
                                         <span className="text-[10px] text-[#a3aed1] ml-2 flex items-center gap-1">
                                             <Calendar className="w-3 h-3" />
-                                            {new Date(review.googleCreatedAt).toLocaleDateString()}
+                                            {review.googleCreatedAt ? new Date(review.googleCreatedAt).toLocaleDateString() : 'Just now'}
                                         </span>
                                     </div>
                                     <p className="text-sm text-[#d1d5db] leading-relaxed max-w-2xl italic">

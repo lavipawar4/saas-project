@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.gitignore
+.env.local
+.env
+build-errors.txt
+build_errors.log
+build_log.txt
+tmp
+supabase
+Dockerfile
+.dockerignore
