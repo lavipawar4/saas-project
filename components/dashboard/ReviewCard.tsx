@@ -45,20 +45,22 @@ function ActionChip({ status }: { status: ReviewStatus }) {
 }
 
 export default function ReviewCard({ review, onClick }: ReviewCardProps) {
-    const config = statusConfig[review.status] ?? statusConfig.pending;
+    const config = statusConfig[(review.status as ReviewStatus) || "unanswered"] ?? statusConfig.pending;
     const Icon = config.icon;
 
-    const snippet = review.review_text
-        ? review.review_text.length > 80
-            ? review.review_text.slice(0, 80).trim() + "…"
-            : review.review_text
+    const snippet = review.reviewText
+        ? review.reviewText.length > 80
+            ? review.reviewText.slice(0, 80).trim() + "…"
+            : review.reviewText
         : null;
 
-    const timeAgo = review.google_created_at
-        ? new Date(review.google_created_at).toLocaleDateString("en-US", {
+    const timeAgo = review.googleCreatedAt
+        ? new Date(review.googleCreatedAt).toLocaleDateString("en-US", {
             month: "short", day: "numeric", year: "numeric",
         })
         : "Unknown date";
+        
+    const reviewerName = review.reviewerName || "Anonymous";
 
     return (
         <button
@@ -66,17 +68,14 @@ export default function ReviewCard({ review, onClick }: ReviewCardProps) {
             className="w-full text-left glass-card rounded-xl p-5 hover:border-indigo-500/25 border border-transparent transition-all duration-200 hover:-translate-y-0.5 cursor-pointer group"
         >
             <div className="flex items-start gap-4">
-                {/* Avatar */}
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500/30 to-purple-500/30 flex items-center justify-center shrink-0 text-indigo-300 font-semibold text-sm mt-0.5">
-                    {review.reviewer_name.charAt(0).toUpperCase()}
+                    {reviewerName.charAt(0).toUpperCase()}
                 </div>
 
-                {/* Content */}
                 <div className="flex-1 min-w-0">
-                    {/* Row 1: name + stars + date + status badge */}
                     <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
-                        <span className="font-semibold text-sm text-foreground">{review.reviewer_name}</span>
-                        <StarRating rating={review.star_rating} />
+                        <span className="font-semibold text-sm text-foreground">{reviewerName}</span>
+                        <StarRating rating={review.starRating || 5} />
                         <span className="text-xs text-muted-foreground">{timeAgo}</span>
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${config.className}`}>
                             <Icon className="w-3 h-3" />
@@ -84,15 +83,13 @@ export default function ReviewCard({ review, onClick }: ReviewCardProps) {
                         </span>
                     </div>
 
-                    {/* Row 2: snippet (80 chars) */}
                     <p className="text-sm text-muted-foreground">
                         {snippet ?? <em className="not-italic opacity-60">No written review</em>}
                     </p>
                 </div>
 
-                {/* Action chip — right side */}
                 <div className="shrink-0 self-center">
-                    <ActionChip status={review.status} />
+                    <ActionChip status={(review.status as ReviewStatus) || "unanswered"} />
                 </div>
             </div>
         </button>

@@ -1,6 +1,8 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
+import { reviews, responses, businesses } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 
 export interface DashboardMetrics {
     responseRate: number;
@@ -11,15 +13,12 @@ export interface DashboardMetrics {
 }
 
 export async function getDashboardMetrics(businessId: string): Promise<DashboardMetrics> {
-    const supabase = await createClient();
+    const bizReviews = await db.query.reviews.findMany({
+        where: eq(reviews.businessId, businessId),
+        columns: { id: true, status: true, googleCreatedAt: true, starRating: true }
+    });
 
-    // 1. Fetch all reviews for this business
-    const { data: reviews } = await supabase
-        .from("reviews")
-        .select("id, status, google_created_at, star_rating")
-        .eq("business_id", businessId);
-
-    if (!reviews) {
+    if (!bizReviews || bizReviews.length === 0) {
         return {
             responseRate: 0,
             avgResponseTime: 0,
@@ -29,14 +28,13 @@ export async function getDashboardMetrics(businessId: string): Promise<Dashboard
         };
     }
 
-    // 2. Fetch all responses for these reviews
-    const { data: responses } = await supabase
-        .from("responses")
-        .select("status, published_at, was_edited, review_id")
-        .eq("business_id", businessId);
+    const bizResponses = await db.query.responses.findMany({
+        where: eq(responses.businessId, businessId),
+        columns: { status: true, publishedAt: true, wasEdited: true, reviewId: true }
+    });
 
-    const publishedResponses = responses?.filter(r => r.status === "published") || [];
-    const totalReviews = reviews.length;
+    const publishedResponses = bizResponses.filter((r: any) => r.status === "published");
+    const totalReviews = bizReviews.length;
     const respondedReviews = publishedResponses.length;
 
     // Response Rate
@@ -45,11 +43,11 @@ export async function getDashboardMetrics(businessId: string): Promise<Dashboard
     // Avg Response Time
     let totalHours = 0;
     let responseCount = 0;
-    publishedResponses.forEach(res => {
-        const review = reviews.find(rv => rv.id === res.review_id);
-        if (review && review.google_created_at && res.published_at) {
-            const start = new Date(review.google_created_at).getTime();
-            const end = new Date(res.published_at).getTime();
+    publishedResponses.forEach((res: any) => {
+        const review = bizReviews.find((rv: any) => rv.id === res.reviewId);
+        if (review && review.googleCreatedAt && res.publishedAt) {
+            const start = new Date(review.googleCreatedAt).getTime();
+            const end = new Date(res.publishedAt).getTime();
             totalHours += (end - start) / (1000 * 60 * 60);
             responseCount++;
         }
@@ -57,8 +55,8 @@ export async function getDashboardMetrics(businessId: string): Promise<Dashboard
     const avgResponseTime = responseCount > 0 ? totalHours / responseCount : 0;
 
     // Edit Rate
-    const totalDrafts = responses?.length || 0;
-    const editedDrafts = responses?.filter(r => r.was_edited).length || 0;
+    const totalDrafts = bizResponses.length || 0;
+    const editedDrafts = bizResponses.filter((r: any) => r.wasEdited).length || 0;
     const editRate = totalDrafts > 0 ? (editedDrafts / totalDrafts) * 100 : 0;
 
     // Aggregate Trends (Last 6 Months)
@@ -68,10 +66,10 @@ export async function getDashboardMetrics(businessId: string): Promise<Dashboard
         return d.toLocaleString('default', { month: 'short' });
     }).reverse();
 
-    // Placeholder logic for Rating Trend & Volume (would normally use SQL group by)
+    // Placeholder logic for Rating Trend & Volume
     const ratingTrend = last6Months.map(month => ({
         month,
-        rating: 4.2 + (Math.random() * 0.5) // Simulation for now
+        rating: 4.2 + (Math.random() * 0.5)
     }));
 
     const responseVolume = last6Months.map(month => ({
@@ -90,20 +88,22 @@ export async function getDashboardMetrics(businessId: string): Promise<Dashboard
 }
 
 export async function getInternalProductAnalytics() {
-    const supabase = await createClient();
-
-    // Industry Edit Rates
-    const { data: industries } = await supabase
-        .from("businesses")
-        .select("industry, responses(was_edited)");
+    const bizList = await db.query.businesses.findMany({
+        columns: { industry: true },
+        with: {
+            responses: {
+                columns: { wasEdited: true }
+            }
+        }
+    });
 
     const industryStats: Record<string, { total: number; edited: number }> = {};
-    industries?.forEach(biz => {
+    bizList.forEach((biz: any) => {
         const ind = biz.industry || "General";
         if (!industryStats[ind]) industryStats[ind] = { total: 0, edited: 0 };
-        (biz as any).responses?.forEach((res: any) => {
+        biz.responses?.forEach((res: any) => {
             industryStats[ind].total++;
-            if (res.was_edited) industryStats[ind].edited++;
+            if (res.wasEdited) industryStats[ind].edited++;
         });
     });
 

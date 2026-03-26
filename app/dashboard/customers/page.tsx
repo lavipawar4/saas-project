@@ -1,19 +1,21 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { auth } from "@/auth";
+import { db } from "@/lib/db";
+import { businesses, customers } from "@/lib/db/schema";
+import { eq, desc } from "drizzle-orm";
 import CustomersClient from "@/components/dashboard/CustomersClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function CustomersPage() {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) redirect("/login");
+    const session = await auth();
+    const user = session?.user;
+    if (!user || !user.id) redirect("/login");
 
-    const { data: business } = await supabase
-        .from("businesses")
-        .select("id, name")
-        .eq("user_id", user.id)
-        .single();
+    const business = await db.query.businesses.findFirst({
+        where: eq(businesses.userId, user.id),
+        columns: { id: true, name: true }
+    });
 
     if (!business) {
         return (
@@ -24,16 +26,15 @@ export default async function CustomersPage() {
         );
     }
 
-    const { data: customers } = await supabase
-        .from("customers")
-        .select("*")
-        .eq("business_id", business.id)
-        .order("created_at", { ascending: false });
+    const customerList = await db.query.customers.findMany({
+        where: eq(customers.businessId, business.id),
+        orderBy: [desc(customers.createdAt)]
+    });
 
     return (
         <CustomersClient
-            business={business}
-            initialCustomers={customers || []}
+            business={business as any}
+            initialCustomers={customerList as any}
         />
     );
 }

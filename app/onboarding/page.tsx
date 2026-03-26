@@ -43,13 +43,13 @@ const TONES = [
     },
 ];
 
+// Sample data for demo
 const SAMPLE_REVIEW = {
-    id: "__sample__",
-    reviewer_name: "Sarah M.",
-    star_rating: 5,
-    review_text: "Absolutely loved the experience from start to finish. The team was professional, friendly, and went above and beyond. Will definitely be coming back!",
+    reviewerName: "Sarah M.",
+    starRating: 5,
+    reviewText: "Absolutely loved the experience from start to finish. The team was professional, friendly, and went above and beyond. Will definitely be coming back!",
+    googleCreatedAt: new Date().toISOString()
 };
-
 // ─── Step indicator ───────────────────────────
 function StepIndicator({ step, total }: { step: number; total: number }) {
     return (
@@ -121,7 +121,7 @@ function OnboardingContent() {
     async function handleStep2() {
         setError("");
         startTransition(async () => {
-            const result = await createBusiness({ name: businessName, industry, tone, keywords, owner_name: ownerName });
+            const result = await createBusiness({ name: businessName, industry, tone, keywords, ownerName });
             if (result.success) {
                 setBusinessId(result.businessId ?? null);
                 setStep(3);
@@ -378,15 +378,13 @@ function OnboardingContent() {
                             {/* Sample review */}
                             <div className="glass-card rounded-xl p-4 mb-4">
                                 <div className="flex items-center gap-2 mb-2">
-                                    <div className="flex">
-                                        {[1, 2, 3, 4, 5].map(s => (
-                                            <Star key={s} className="w-3.5 h-3.5 text-green-400 fill-current" />
-                                        ))}
+                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500/30 to-purple-500/30 flex items-center justify-center shrink-0 text-indigo-300 font-bold text-xs mt-0.5">S</div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className="text-sm font-medium">{SAMPLE_REVIEW.reviewerName}</span>
+                                        <span className="text-xs text-muted-foreground">· Sample review</span>
                                     </div>
-                                    <span className="text-sm font-medium">{SAMPLE_REVIEW.reviewer_name}</span>
-                                    <span className="text-xs text-muted-foreground">· Sample review</span>
                                 </div>
-                                <p className="text-sm text-muted-foreground italic">{'"'}{SAMPLE_REVIEW.review_text}{'"'}</p>
+                                <p className="text-sm text-muted-foreground italic">{'"'}{SAMPLE_REVIEW.reviewText}{'"'}</p>
                             </div>
 
                             {/* Generated response */}

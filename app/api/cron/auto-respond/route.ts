@@ -1,48 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
+import { businesses, subscriptions, reviews, responses } from "@/lib/db/schema";
+import { eq, and } from "drizzle-orm";
 import { generateReviewResponse } from "@/lib/ai/generate";
 
-// Vercel Cron or external scheduler hits this endpoint
-// Secured with CRON_SECRET header
 export async function GET(request: NextRequest) {
     const authHeader = request.headers.get("authorization");
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabase = await createAdminClient();
+    const autoRespondBusinesses = await db.query.businesses.findMany({
+        where: eq(businesses.autoRespond, true),
+        columns: { id: true, name: true, userId: true }
+    });
 
-    // Find all businesses that have auto_respond enabled (Pro users only)
-    const { data: businesses } = await supabase
-        .from("businesses")
-        .select("id, name, user_id")
-        .eq("auto_respond", true);
-
-    if (!businesses || businesses.length === 0) {
+    if (!autoRespondBusinesses || autoRespondBusinesses.length === 0) {
         return NextResponse.json({ message: "No businesses with auto-respond enabled", processed: 0 });
     }
 
     let totalPublished = 0;
     let totalSkipped = 0;
 
-    for (const business of businesses) {
-        // Verify Pro subscription
-        const { data: sub } = await supabase
-            .from("subscriptions")
-            .select("plan, responses_used_this_month, responses_limit")
-            .eq("user_id", business.user_id)
-            .single();
+    for (const business of autoRespondBusinesses) {
+        const sub = await db.query.subscriptions.findFirst({
+            where: eq(subscriptions.userId, business.userId),
+            columns: { plan: true, responsesUsedThisMonth: true, responsesLimit: true }
+        });
 
         if (!sub || sub.plan !== "pro") continue;
-        if (sub.responses_limit !== -1 && sub.responses_used_this_month >= sub.responses_limit) continue;
+        if (sub.responsesLimit !== -1 && sub.responsesUsedThisMonth >= sub.responsesLimit) continue;
 
-        // Find pending reviews for this business
-        const { data: pendingReviews } = await supabase
-            .from("reviews")
-            .select("id")
-            .eq("business_id", business.id)
-            .eq("status", "pending")
-            .limit(20); // Safety cap per run
+        const pendingReviews = await db.query.reviews.findMany({
+            where: and(
+                eq(reviews.businessId, business.id),
+                eq(reviews.status, "pending")
+            ),
+            columns: { id: true },
+            limit: 20
+        });
 
         if (!pendingReviews || pendingReviews.length === 0) continue;
 
@@ -54,7 +50,7 @@ export async function GET(request: NextRequest) {
                     continue;
                 }
 
-                // Auto-publish only if generation quality is high
+                // Auto-publish only if high quality
                 const highQuality =
                     (result.generationCount ?? 1) === 1 &&
                     (result.confidence_score ?? 0) > 0.8 &&
@@ -65,28 +61,24 @@ export async function GET(request: NextRequest) {
                     continue;
                 }
 
-                // Publish the response directly to Google — fetch draft text first
-                const { data: responseRow } = await supabase
-                    .from("responses")
-                    .select("draft_text")
-                    .eq("review_id", review.id)
-                    .single();
+                const responseRow = await db.query.responses.findFirst({
+                    where: eq(responses.reviewId, review.id),
+                    columns: { draftText: true }
+                });
 
-                if (!responseRow?.draft_text) {
+                if (!responseRow?.draftText) {
                     totalSkipped++;
                     continue;
                 }
 
                 const { publishReply } = await import("@/lib/google/reviews");
-                const publishResult = await publishReply(review.id, responseRow.draft_text);
+                const publishResult = await publishReply(review.id, responseRow.draftText);
 
                 if (publishResult.success) {
                     totalPublished++;
-                    // Mark as auto-published
-                    await supabase.from("responses").update({
-                        published_without_edit: true,
-                        edit_distance_pct: 0,
-                    }).eq("review_id", review.id);
+                    await db.update(responses)
+                        .set({ publishedWithoutEdit: true, editDistancePct: 0 })
+                        .where(eq(responses.reviewId, review.id));
                 } else {
                     totalSkipped++;
                 }
@@ -100,6 +92,6 @@ export async function GET(request: NextRequest) {
         message: `Auto-respond complete`,
         published: totalPublished,
         skipped: totalSkipped,
-        businesses: businesses.length,
+        businesses: autoRespondBusinesses.length,
     });
 }

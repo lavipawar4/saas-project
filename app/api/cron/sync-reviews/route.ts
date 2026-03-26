@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
+import { businesses } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import { syncReviews } from "@/lib/google/reviews";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Vercel Cron Job endpoint: GET /api/cron/sync-reviews
- * Secure with header Authorization: Bearer <CRON_SECRET>
- */
 export async function GET(req: Request) {
     const authHeader = req.headers.get("authorization");
     const secret = process.env.CRON_SECRET;
@@ -16,23 +14,16 @@ export async function GET(req: Request) {
         return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const supabase = await createAdminClient();
+    // Direct DB access bypasses RLS naturally in Drizzle
+    const connectedBusinesses = await db.query.businesses.findMany({
+        where: eq(businesses.isConnected, true),
+        columns: { id: true, name: true }
+    });
 
-    // Fetch all businesses that are connected to Google
-    const { data: businesses, error } = await supabase
-        .from("businesses")
-        .select("id, name")
-        .eq("is_connected", true);
-
-    if (error) {
-        console.error("[Cron] Failed to fetch businesses:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    console.log(`[Cron] Starting sync for ${businesses.length} businesses...`);
+    console.log(`[Cron] Starting sync for ${connectedBusinesses.length} businesses...`);
 
     const results = [];
-    for (const biz of businesses) {
+    for (const biz of connectedBusinesses) {
         try {
             const result = await syncReviews(biz.id);
             results.push({
@@ -50,7 +41,7 @@ export async function GET(req: Request) {
     }
 
     return NextResponse.json({
-        processed: businesses.length,
+        processed: connectedBusinesses.length,
         results
     });
 }

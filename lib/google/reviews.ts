@@ -1,11 +1,15 @@
 import { google } from "googleapis";
-import { createAdminClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
+import { businesses, reviews, users, responses } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import { sendNegativeReviewAlert } from "@/lib/email/alerts";
+
+const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/google/callback`;
 
 const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI
+    redirectUri
 );
 
 export function getGoogleAuthUrl(userId: string): string {
@@ -27,22 +31,19 @@ export async function exchangeCodeForTokens(code: string) {
 }
 
 async function getAuthenticatedClient(businessId: string) {
-    const supabase = await createAdminClient();
-    const { data: business } = await supabase
-        .from("businesses")
-        .select("google_account_token, google_access_token, google_refresh_token, google_token_expiry")
-        .eq("id", businessId)
-        .single();
+    const business = await db.query.businesses.findFirst({
+        where: eq(businesses.id, businessId),
+        columns: { googleAccountToken: true, googleAccessToken: true, googleRefreshToken: true, googleTokenExpiry: true }
+    });
 
     if (!business) {
         throw new Error("Business not found");
     }
 
-    // Try JSONB first, fall back to legacy columns
-    const tokenData = (business.google_account_token as any) || {
-        access_token: business.google_access_token,
-        refresh_token: business.google_refresh_token,
-        expiry: business.google_token_expiry ? new Date(business.google_token_expiry).getTime() : undefined,
+    const tokenData = (business.googleAccountToken as any) || {
+        access_token: business.googleAccessToken,
+        refresh_token: business.googleRefreshToken,
+        expiry: business.googleTokenExpiry ? new Date(business.googleTokenExpiry).getTime() : undefined,
     };
 
     if (!tokenData?.access_token) {
@@ -57,29 +58,26 @@ async function getAuthenticatedClient(businessId: string) {
             : tokenData.expiry ? new Date(tokenData.expiry).getTime() : undefined,
     });
 
-    // Auto-refresh if expired
     oauth2Client.on("tokens", async (tokens: { access_token?: string | null; refresh_token?: string | null; expiry_date?: number | null }) => {
         if (tokens.access_token) {
-            const currentToken = (business.google_account_token as any) || {};
-            await supabase.from("businesses").update({
-                google_account_token: {
+            const currentToken = (business.googleAccountToken as any) || {};
+            await db.update(businesses).set({
+                googleAccountToken: {
                     ...currentToken,
                     access_token: tokens.access_token,
                     refresh_token: tokens.refresh_token || currentToken.refresh_token,
                     expiry: tokens.expiry_date,
                     updated_at: new Date().toISOString(),
                 },
-                // Also update legacy columns for safety during transition
-                google_access_token: tokens.access_token,
-                google_token_expiry: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
-            }).eq("id", businessId);
+                googleAccessToken: tokens.access_token,
+                googleTokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+            }).where(eq(businesses.id, businessId));
         }
     });
 
     return oauth2Client;
 }
 
-// ─── Exponential Backoff Utility ────────────────
 async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
     let lastError: any;
     for (let i = 0; i <= maxRetries; i++) {
@@ -89,7 +87,6 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
             lastError = err;
             const status = err?.response?.status || err?.status;
 
-            // Only retry on 503 or transient network/rate limit issues
             if (i < maxRetries && (status === 503 || status === 429)) {
                 const delay = Math.pow(2, i) * 1000;
                 console.warn(`[Google API] ${status} error. Retrying in ${delay}ms (attempt ${i + 1}/${maxRetries})...`);
@@ -103,76 +100,84 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
 }
 
 export async function syncReviews(businessId: string): Promise<{ synced: number; error?: string }> {
-    const supabase = await createAdminClient();
-
     try {
         const auth = await getAuthenticatedClient(businessId);
-        // Fetch business + owner info for alert emails
-        const { data: business } = await supabase
-            .from("businesses")
-            .select("google_location_id, name, user_id")
-            .eq("id", businessId)
-            .single();
+        
+        const business = await db.query.businesses.findFirst({
+            where: eq(businesses.id, businessId),
+            columns: { googleLocationId: true, name: true, userId: true, autoRespond: true }
+        });
 
-        if (!business?.google_location_id) {
+        if (!business?.googleLocationId) {
             return { synced: 0, error: "No Google location ID set" };
         }
 
-        // Call Google Business Profile API with retry
-        // @ts-ignore -- googleapis v144 types don't expose mybusinessreviews as callable
+        const { generateReviewResponse } = await import("@/lib/ai/generate");
+
+        // @ts-ignore
         const mybusiness = google.mybusinessreviews({ version: "v4", auth });
 
         const response = await withRetry(() => mybusiness.accounts.locations.reviews.list({
-            parent: business.google_location_id,
+            parent: business.googleLocationId!,
         })) as any;
 
-        const reviews = response.data.reviews || [];
+        const googleReviewsList = response.data.reviews || [];
         let synced = 0;
 
-        for (const review of reviews) {
+        for (const review of googleReviewsList) {
             if (!review.reviewId) continue;
 
-            // Check if this is a genuinely new review (no prior DB row)
-            const { data: existing } = await supabase
-                .from("reviews")
-                .select("id, status")
-                .eq("google_review_id", review.reviewId)
-                .maybeSingle();
+            const existing = await db.query.reviews.findFirst({
+                where: eq(reviews.googleReviewId, review.reviewId),
+                columns: { id: true, status: true }
+            });
 
             const isNew = !existing;
             const starRating = mapStarRating(review.starRating);
 
-            const { error } = await supabase.from("reviews").upsert({
-                business_id: businessId,
-                google_review_id: review.reviewId,
-                reviewer_name: review.reviewer?.displayName || "Anonymous",
-                reviewer_photo_url: review.reviewer?.profilePhotoUrl || null,
-                star_rating: starRating,
-                review_text: review.comment || null,
-                review_reply: review.reviewReply?.comment || null,
-                status: review.reviewReply ? "published" : "unanswered",
-                google_created_at: review.createTime || null,
-                synced_at: new Date().toISOString(),
-            }, { onConflict: "google_review_id" });
+            let insertedReviewId = existing?.id;
 
-            if (!error) {
+            if (existing) {
+                await db.update(reviews).set({
+                    reviewerName: review.reviewer?.displayName || "Anonymous",
+                    reviewerPhotoUrl: review.reviewer?.profilePhotoUrl || null,
+                    starRating,
+                    reviewText: review.comment || null,
+                    reviewReply: review.reviewReply?.comment || null,
+                    status: review.reviewReply ? "published" : existing.status,
+                    googleCreatedAt: review.createTime ? new Date(review.createTime) : null,
+                    syncedAt: new Date(),
+                }).where(eq(reviews.id, existing.id));
+            } else {
+                const [newReview] = await db.insert(reviews).values({
+                    businessId,
+                    googleReviewId: review.reviewId,
+                    reviewerName: review.reviewer?.displayName || "Anonymous",
+                    reviewerPhotoUrl: review.reviewer?.profilePhotoUrl || null,
+                    starRating,
+                    reviewText: review.comment || null,
+                    reviewReply: review.reviewReply?.comment || null,
+                    status: review.reviewReply ? "published" : "unanswered",
+                    googleCreatedAt: review.createTime ? new Date(review.createTime) : null,
+                    syncedAt: new Date(),
+                }).returning({ id: reviews.id });
+                insertedReviewId = newReview.id;
                 synced++;
+            }
 
-                // Fire negative review alert for genuinely new 1-2 star reviews
+            if (insertedReviewId) {
                 if (isNew && starRating <= 2 && !review.reviewReply) {
-                    const { data: profile } = await supabase
-                        .from("profiles")
-                        .select("email, full_name")
-                        .eq("id", business!.user_id)
-                        .single();
+                    const profile = await db.query.users.findFirst({
+                        where: eq(users.id, business.userId),
+                        columns: { email: true, name: true }
+                    });
 
                     if (profile?.email) {
                         const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://reviewai.app";
-                        // Fire-and-forget — don't block sync
                         sendNegativeReviewAlert({
                             ownerEmail: profile.email,
-                            ownerName: profile.full_name || "",
-                            businessName: business!.name,
+                            ownerName: profile.name || "",
+                            businessName: business.name,
                             reviewerName: review.reviewer?.displayName || "Anonymous",
                             starRating,
                             reviewText: review.comment || null,
@@ -183,63 +188,69 @@ export async function syncReviews(businessId: string): Promise<{ synced: number;
                         }).catch((e) => console.error("[Alert] Failed:", e));
                     }
                 }
+
+                if (isNew && !review.reviewReply && business.autoRespond) {
+                    try {
+                        const genResult = await generateReviewResponse(insertedReviewId);
+
+                        if (genResult.success && genResult.text) {
+                            console.log(`[Full-Auto] Automatically publishing response for review ${insertedReviewId} (${starRating} stars)`);
+                            await publishReply(insertedReviewId, genResult.text);
+                        }
+                    } catch (genErr) {
+                        console.error(`[Full-Auto] Failed for review ${insertedReviewId}:`, genErr);
+                    }
+                }
             }
         }
 
-        // Update last synced time
-        await supabase.from("businesses").update({
-            last_synced_at: new Date().toISOString(),
-        }).eq("id", businessId);
+        await db.update(businesses)
+            .set({ lastSyncedAt: new Date() })
+            .where(eq(businesses.id, businessId));
 
         return { synced };
     } catch (err: any) {
-        const status = err?.response?.status || err?.status;
         const message = err?.response?.data?.error?.message || err.message || "Unknown error";
-        console.error(`[Google API] Sync failed for ${businessId}:`, { status, message });
         return { synced: 0, error: `Google API Error: ${message}` };
     }
 }
 
 export async function publishReply(reviewId: string, replyText: string): Promise<{ success: boolean; error?: string }> {
-    const supabase = await createAdminClient();
+    const reviewRow = await db.query.reviews.findFirst({
+        where: eq(reviews.id, reviewId),
+        columns: { googleReviewId: true, businessId: true },
+        with: {
+            business: { columns: { googleLocationId: true } }
+        }
+    });
 
-    const { data: review } = await supabase
-        .from("reviews")
-        .select("google_review_id, business_id, businesses(google_location_id)")
-        .eq("id", reviewId)
-        .single();
-
-    if (!review) return { success: false, error: "Review not found" };
+    if (!reviewRow || !reviewRow.business) return { success: false, error: "Review not found" };
 
     try {
-        const auth = await getAuthenticatedClient(review.business_id);
-        const business = review.businesses as unknown as { google_location_id: string } | null;
+        const auth = await getAuthenticatedClient(reviewRow.businessId);
 
-        if (!business?.google_location_id) {
+        if (!reviewRow.business.googleLocationId) {
             return { success: false, error: "No Google location ID" };
         }
 
-        // @ts-ignore -- googleapis v144 types don't expose mybusinessreviews as callable
+        // @ts-ignore
         const mybusiness = google.mybusinessreviews({ version: "v4", auth });
         await withRetry(() => mybusiness.accounts.locations.reviews.updateReply({
-            name: `${business.google_location_id}/reviews/${review.google_review_id}`,
+            name: `${reviewRow.business.googleLocationId}/reviews/${reviewRow.googleReviewId}`,
             requestBody: { comment: replyText },
         }));
 
-        // Update DB status
-        await supabase.from("responses").update({
-            status: "published",
-            final_text: replyText,
-            published_at: new Date().toISOString(),
-        }).eq("review_id", reviewId);
+        await db.update(responses)
+            .set({ status: "published", finalText: replyText, publishedAt: new Date() })
+            .where(eq(responses.reviewId, reviewId));
 
-        await supabase.from("reviews").update({ status: "published" }).eq("id", reviewId);
+        await db.update(reviews)
+            .set({ status: "published" })
+            .where(eq(reviews.id, reviewId));
 
         return { success: true };
     } catch (err: any) {
-        const status = err?.response?.status || err?.status;
         const message = err?.response?.data?.error?.message || err.message || "Unknown error";
-        console.error(`[Google API] Publishing failed for review ${reviewId}:`, { status, message });
         return { success: false, error: `Google API Error: ${message}` };
     }
 }

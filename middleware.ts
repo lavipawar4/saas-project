@@ -1,60 +1,37 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { auth } from "./auth";
 
-export async function middleware(request: NextRequest) {
-    let supabaseResponse = NextResponse.next({ request });
+export default auth((req) => {
+  const isLoggedIn = !!req.auth;
 
-    const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-            cookies: {
-                getAll() {
-                    return request.cookies.getAll();
-                },
-                setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
-                    cookiesToSet.forEach(({ name, value }) =>
-                        request.cookies.set(name, value)
-                    );
-                    supabaseResponse = NextResponse.next({ request });
-                    cookiesToSet.forEach(({ name, value, options }) =>
-                        supabaseResponse.cookies.set(name, value, options)
-                    );
-                },
-            },
-        }
-    );
+  const isAuthRoute =
+    req.nextUrl.pathname.startsWith("/login") ||
+    req.nextUrl.pathname.startsWith("/signup") ||
+    req.nextUrl.pathname === "/";
 
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+  const isProtectedRoute =
+    req.nextUrl.pathname.startsWith("/dashboard") ||
+    req.nextUrl.pathname.startsWith("/onboarding") ||
+    req.nextUrl.pathname.startsWith("/settings");
+  const isPublicRoute = req.nextUrl.pathname.startsWith("/pricing") || req.nextUrl.pathname.endsWith(".html");
 
-    const isAuthRoute = request.nextUrl.pathname.startsWith("/login") ||
-        request.nextUrl.pathname.startsWith("/signup") ||
-        request.nextUrl.pathname === "/";
+  if (!isLoggedIn && isProtectedRoute && !isPublicRoute) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
 
-    const isProtectedRoute = request.nextUrl.pathname.startsWith("/dashboard") ||
-        request.nextUrl.pathname.startsWith("/onboarding") ||
-        request.nextUrl.pathname.startsWith("/settings") ||
-        request.nextUrl.pathname.startsWith("/pricing");
+  if (isLoggedIn && isAuthRoute && req.nextUrl.pathname !== "/") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/dashboard";
+    return NextResponse.redirect(url);
+  }
 
-    if (!user && isProtectedRoute) {
-        const url = request.nextUrl.clone();
-        url.pathname = "/login";
-        return NextResponse.redirect(url);
-    }
-
-    if (user && isAuthRoute && request.nextUrl.pathname !== "/") {
-        const url = request.nextUrl.clone();
-        url.pathname = "/dashboard";
-        return NextResponse.redirect(url);
-    }
-
-    return supabaseResponse;
-}
+  return NextResponse.next();
+});
 
 export const config = {
-    matcher: [
-        "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
-    ],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };

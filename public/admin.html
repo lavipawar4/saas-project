@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anti-Gravity Admin Control</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-slate-900 text-white font-sans">
+
+    <div class="flex h-screen">
+        <div class="w-64 bg-slate-800 p-6 hidden md:block">
+            <h2 class="text-2xl font-bold text-cyan-400 mb-10"><i class="fa-solid fa-atom mr-2"></i>A-G Control</h2>
+            <nav class="space-y-4">
+                <a href="#" class="block p-3 bg-cyan-600 rounded-lg"><i class="fa-solid fa-chart-line mr-2"></i> Dashboard</a>
+                <a href="#" class="block p-3 hover:bg-slate-700 rounded-lg"><i class="fa-solid fa-flask mr-2"></i> Experiments</a>
+                <a href="#" class="block p-3 hover:bg-slate-700 rounded-lg"><i class="fa-solid fa-microchip mr-2"></i> Sensor Data</a>
+                <a href="#" class="block p-3 hover:bg-slate-700 rounded-lg text-red-400"><i class="fa-solid fa-power-off mr-2"></i> Logout</a>
+            </nav>
+        </div>
+
+        <main class="flex-1 p-8 overflow-y-auto">
+            <header class="flex justify-between items-center mb-8">
+                <h1 class="text-3xl font-semibold">Project Overview <span class="text-sm bg-green-500 text-white px-2 py-1 rounded-full ml-2 text-normal">Admin Active</span></h1>
+                <div class="text-right">
+                    <p class="font-medium text-cyan-400">Welcome, Lavi Pawar</p>
+                    <p class="text-xs text-slate-400">Final Year AIDS Student</p>
+                </div>
+            </header>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10" id="sensor-cards">
+                <div class="bg-slate-800 p-6 rounded-xl border-l-4 border-cyan-500 shadow-lg">
+                    <p class="text-slate-400">Current Gravity</p>
+                    <h3 class="text-4xl font-bold">0.42 <span class="text-lg text-slate-500 font-normal">m/s²</span></h3>
+                </div>
+                <div class="bg-slate-800 p-6 rounded-xl border-l-4 border-purple-500 shadow-lg">
+                    <p class="text-slate-400">Power Stability</p>
+                    <h3 class="text-4xl font-bold text-green-400">98%</h3>
+                </div>
+                <!-- Dynamic sensors will be appended here -->
+            </div>
+
+            <div class="bg-slate-800 rounded-xl p-6 shadow-xl">
+                <h2 class="text-xl font-semibold mb-4">Latest Experiment Logs</h2>
+                <table class="w-full text-left">
+                    <thead>
+                        <tr class="text-slate-500 border-b border-slate-700">
+                            <th class="pb-3">Log ID</th>
+                            <th class="pb-3">Timestamp</th>
+                            <th class="pb-3">Status</th>
+                            <th class="pb-3">Message</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-slate-300" id="logs-body">
+                        <!-- Dynamic logs will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        async function fetchAdminData() {
+            try {
+                const response = await fetch('/api/admin/data');
+                const data = await response.json();
+                
+                // Populate Logs
+                const logsBody = document.getElementById('logs-body');
+                logsBody.innerHTML = ''; // Clear static data
+                
+                data.logs.forEach((log, index) => {
+                    const statusClass = index % 2 === 0 ? 'text-green-400' : 'text-blue-400';
+                    const statusText = index % 2 === 0 ? 'Success' : 'In Progress';
+                    
+                    const tr = document.createElement('tr');
+                    tr.className = 'border-b border-slate-700';
+                    tr.innerHTML = `
+                        <td class="py-4 font-mono">#AG-2026-0${log.id}</td>
+                        <td class="py-4">${log.timestamp}</td>
+                        <td class="py-4 ${statusClass} italic">${statusText}</td>
+                        <td class="py-4">${log.message}</td>
+                    `;
+                    logsBody.appendChild(tr);
+                });
+
+                // Add Sensors dynamically to cards
+                const sensorCards = document.getElementById('sensor-cards');
+                data.sensors.forEach(sensor => {
+                    const div = document.createElement('div');
+                    div.className = 'bg-slate-800 p-6 rounded-xl border-l-4 border-orange-500 shadow-lg';
+                    div.innerHTML = `
+                        <p class="text-slate-400">${sensor.name}</p>
+                        <h3 class="text-4xl font-bold">${sensor.value.split(' ')[0]} <span class="text-lg text-slate-500 font-normal">${sensor.value.split(' ')[1] || ''}</span></h3>
+                    `;
+                    sensorCards.appendChild(div);
+                });
+
+            } catch (error) {
+                console.error("Failed to load admin data:", error);
+            }
+        }
+
+        // Initialize fetch when DOM is loaded
+        document.addEventListener('DOMContentLoaded', fetchAdminData);
+    </script>
+</body>
+</html>

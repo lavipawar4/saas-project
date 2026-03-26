@@ -1,44 +1,67 @@
 "use client";
 
 import { useState } from "react";
+import { signIn } from "next-auth/react";
 import Link from "next/link";
-import { Star, Eye, EyeOff, Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { Star, Loader2, Mail, ShieldCheck } from "lucide-react";
+
+type Step = "email" | "otp";
 
 export default function LoginPage() {
-    const router = useRouter();
+    const [step, setStep] = useState<Step>("email");
     const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
-    const [showPassword, setShowPassword] = useState(false);
+    const [otp, setOtp] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
-    async function handleLogin(e: React.FormEvent) {
+    async function handleSendOtp(e: React.FormEvent) {
         e.preventDefault();
         setLoading(true);
         setError("");
-        const supabase = createClient();
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) {
-            setError(error.message);
-            setLoading(false);
+
+        const res = await fetch("/api/auth/otp/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+            setError(data.error || "Failed to send OTP");
         } else {
-            router.push("/dashboard");
-            router.refresh();
+            setStep("otp");
         }
+        setLoading(false);
+    }
+
+    async function handleVerifyOtp(e: React.FormEvent) {
+        e.preventDefault();
+        setLoading(true);
+        setError("");
+
+        const result = await signIn("credentials", {
+            email,
+            otp,
+            redirect: false,
+        });
+
+        if (result?.error) {
+            setError("Invalid or expired OTP. Please try again.");
+        } else {
+            window.location.href = "/dashboard";
+        }
+        setLoading(false);
     }
 
     return (
         <div className="min-h-screen bg-background flex items-center justify-center px-4">
-            {/* Background glows */}
             <div className="fixed inset-0 pointer-events-none overflow-hidden">
                 <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl" />
                 <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl" />
             </div>
 
             <div className="w-full max-w-md animate-fade-in">
-                {/* Logo */}
                 <div className="text-center mb-8">
                     <Link href="/" className="inline-flex items-center gap-2 mb-6">
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
@@ -46,11 +69,16 @@ export default function LoginPage() {
                         </div>
                         <span className="font-bold text-xl gradient-text">ReviewAI</span>
                     </Link>
-                    <h1 className="text-2xl font-bold">Welcome back</h1>
-                    <p className="text-muted-foreground mt-1 text-sm">Sign in to your account</p>
+                    <h1 className="text-2xl font-bold">
+                        {step === "email" ? "Welcome back" : "Check your email"}
+                    </h1>
+                    <p className="text-muted-foreground mt-1 text-sm">
+                        {step === "email"
+                            ? "Enter your email to receive a login code"
+                            : `We sent a 4-digit code to ${email}`}
+                    </p>
                 </div>
 
-                {/* Card */}
                 <div className="glass-card rounded-2xl p-8">
                     {error && (
                         <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
@@ -58,61 +86,70 @@ export default function LoginPage() {
                         </div>
                     )}
 
-                    <form onSubmit={handleLogin} className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium mb-1.5" htmlFor="email">
-                                Email
-                            </label>
-                            <input
-                                id="email"
-                                type="email"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                required
-                                placeholder="you@example.com"
-                                className="w-full px-4 py-3 rounded-lg bg-secondary border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium mb-1.5" htmlFor="password">
-                                Password
-                            </label>
-                            <div className="relative">
-                                <input
-                                    id="password"
-                                    type={showPassword ? "text" : "password"}
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    required
-                                    placeholder="••••••••"
-                                    className="w-full px-4 py-3 pr-10 rounded-lg bg-secondary border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                                >
-                                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                </button>
+                    {step === "email" ? (
+                        <form onSubmit={handleSendOtp} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-1.5" htmlFor="email">
+                                    Email address
+                                </label>
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                    <input
+                                        id="email"
+                                        type="email"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        required
+                                        placeholder="you@example.com"
+                                        className="w-full pl-10 pr-4 py-3 rounded-lg bg-secondary border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                                    />
+                                </div>
                             </div>
-                        </div>
-
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="w-full py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold transition-all duration-200 flex items-center justify-center gap-2"
-                        >
-                            {loading ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    Signing in...
-                                </>
-                            ) : (
-                                "Sign in"
-                            )}
-                        </button>
-                    </form>
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold transition-all flex items-center justify-center gap-2"
+                            >
+                                {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending...</> : "Send OTP Code"}
+                            </button>
+                        </form>
+                    ) : (
+                        <form onSubmit={handleVerifyOtp} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-1.5">
+                                    4-digit code
+                                </label>
+                                <div className="relative">
+                                    <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                    <input
+                                        type="text"
+                                        value={otp}
+                                        onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                                        required
+                                        placeholder="1234"
+                                        maxLength={4}
+                                        autoFocus
+                                        className="w-full pl-10 pr-4 py-3 rounded-lg bg-secondary border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all text-center tracking-[0.5em] text-xl font-bold"
+                                    />
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1.5">Code expires in 5 minutes</p>
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={loading || otp.length < 4}
+                                className="w-full py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold transition-all flex items-center justify-center gap-2"
+                            >
+                                {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying...</> : "Sign In →"}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setStep("email"); setOtp(""); setError(""); }}
+                                className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                                ← Use a different email
+                            </button>
+                        </form>
+                    )}
 
                     <p className="text-center text-sm text-muted-foreground mt-6">
                         Don&apos;t have an account?{" "}

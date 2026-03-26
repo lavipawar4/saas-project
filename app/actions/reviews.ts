@@ -1,8 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { auth } from "@/auth";
+import { db } from "@/lib/db";
+import { responses, reviews } from "@/lib/db/schema";
+import { eq, and } from "drizzle-orm";
 import { generateReviewResponse } from "@/lib/ai/generate";
 import { publishReply, syncReviews } from "@/lib/google/reviews";
 import { generateRatelimit, checkRateLimit } from "@/lib/redis/ratelimit";
@@ -17,11 +19,10 @@ export async function generateResponse(reviewId: string): Promise<{
     variation_score?: number;
     flags?: string[];
 }> {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, error: "Unauthorized" };
+    const session = await auth();
+    const user = session?.user;
+    if (!user || !user.id) return { success: false, error: "Unauthorized" };
 
-    // Rate limit: 20 single generations per user per minute
     const rl = await checkRateLimit(generateRatelimit, `generate:${user.id}`);
     if (!rl.allowed) {
         return { success: false, error: "Rate limit reached. Please wait a moment before generating another response." };
@@ -33,16 +34,14 @@ export async function generateResponse(reviewId: string): Promise<{
         revalidatePath("/dashboard");
     }
 
-    // Fetch updated response row to get newly stored variation_score + flags
     let variation_score: number | undefined;
     let flags: string[] | undefined;
     if (result.success) {
-        const { data: resp } = await supabase
-            .from("responses")
-            .select("variation_score, flags")
-            .eq("review_id", reviewId)
-            .single();
-        variation_score = resp?.variation_score ?? undefined;
+        const resp = await db.query.responses.findFirst({
+            where: eq(responses.reviewId, reviewId),
+            columns: { variationScore: true, flags: true }
+        });
+        variation_score = resp?.variationScore ?? undefined;
         flags = resp?.flags ?? undefined;
     }
 
@@ -62,22 +61,23 @@ export async function saveResponseDraft(reviewId: string, text: string): Promise
     success: boolean;
     error?: string;
 }> {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const session = await auth();
+    const user = session?.user;
     if (!user) return { success: false, error: "Unauthorized" };
 
     if (text.length < 10) return { success: false, error: "Response too short" };
     if (text.length > 600) return { success: false, error: "Response too long (max 600 chars)" };
 
-    const { error } = await supabase
-        .from("responses")
-        .update({ draft_text: text, status: "editing", updated_at: new Date().toISOString() })
-        .eq("review_id", reviewId);
+    try {
+        await db.update(responses)
+            .set({ draftText: text, status: "editing", updatedAt: new Date() })
+            .where(eq(responses.reviewId, reviewId));
 
-    if (error) return { success: false, error: error.message };
-
-    revalidatePath(`/dashboard/reviews/${reviewId}`);
-    return { success: true };
+        revalidatePath(`/dashboard/reviews/${reviewId}`);
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
 }
 
 // Publish response to Google Business Profile
@@ -85,20 +85,22 @@ export async function publishResponse(reviewId: string, text: string): Promise<{
     success: boolean;
     error?: string;
 }> {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const session = await auth();
+    const user = session?.user;
     if (!user) return { success: false, error: "Unauthorized" };
 
     const result = await publishReply(reviewId, text);
     if (result.success) {
-        // Set final_text — DB trigger auto-sets was_edited if it differs from draft_text
-        await supabase
-            .from("responses")
-            .update({ final_text: text, updated_at: new Date().toISOString() })
-            .eq("review_id", reviewId);
+        try {
+            await db.update(responses)
+                .set({ finalText: text, updatedAt: new Date() })
+                .where(eq(responses.reviewId, reviewId));
 
-        revalidatePath(`/dashboard/reviews/${reviewId}`);
-        revalidatePath("/dashboard");
+            revalidatePath(`/dashboard/reviews/${reviewId}`);
+            revalidatePath("/dashboard");
+        } catch (error: any) {
+            return { success: true, error: "Published but failed to save in DB: " + error.message };
+        }
     }
     return result;
 }
@@ -109,8 +111,8 @@ export async function triggerReviewSync(businessId: string): Promise<{
     synced?: number;
     error?: string;
 }> {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const session = await auth();
+    const user = session?.user;
     if (!user) return { success: false, error: "Unauthorized" };
 
     const result = await syncReviews(businessId);
@@ -123,16 +125,18 @@ export async function triggerReviewSync(businessId: string): Promise<{
 
 // Skip a review (mark as not needing response)
 export async function skipReview(reviewId: string): Promise<{ success: boolean; error?: string }> {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const session = await auth();
+    const user = session?.user;
     if (!user) return { success: false, error: "Unauthorized" };
 
-    const { error } = await supabase
-        .from("reviews")
-        .update({ status: "skipped" })
-        .eq("id", reviewId);
+    try {
+        await db.update(reviews)
+            .set({ status: "skipped" })
+            .where(eq(reviews.id, reviewId));
 
-    if (error) return { success: false, error: error.message };
-    revalidatePath("/dashboard");
-    return { success: true };
+        revalidatePath("/dashboard");
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
 }

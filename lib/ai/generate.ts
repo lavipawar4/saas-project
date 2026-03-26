@@ -1,11 +1,9 @@
-import { createAdminClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
+import { businesses, reviews, subscriptions, responses } from "@/lib/db/schema";
+import { eq, desc } from "drizzle-orm";
 import { getIndustryExamples } from "@/lib/ai/examples";
 import { jaccardSimilarity, validateResponse } from "./validator";
 import { INDUSTRY_PRESETS, TONE_GUIDES } from "./presets";
-
-// ─────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────
 
 type ResponseFlag =
     | "hipaa_check_needed"
@@ -27,25 +25,19 @@ interface ReviewGenerationRequest {
         keywords: string[];
         hipaa_mode: boolean;
         owner_name: string;
-        location_city: string; // For Local SEO
+        location_city: string;
     };
-    recent_responses: string[];     // Last 5 for this business (variety)
-    history_responses: string[];    // Last 10 published across business (context)
+    recent_responses: string[];
+    history_responses: string[];
     response_length: "short" | "medium" | "long";
 }
 
-// ─────────────────────────────────────────────
-// Word-count targets per length pref
-// ─────────────────────────────────────────────
 const LENGTH_TARGETS: Record<string, { min: number; max: number }> = {
     short: { min: 50, max: 70 },
     medium: { min: 80, max: 120 },
     long: { min: 130, max: 180 },
 };
 
-// ─────────────────────────────────────────────
-// Star-rating strategy blocks
-// ─────────────────────────────────────────────
 function starStrategy(starRating: number, ownerName: string): string {
     const signOff = ownerName
         ? `End with a warm sign-off from ${ownerName} or the team.`
@@ -60,15 +52,12 @@ function starStrategy(starRating: number, ownerName: string): string {
             return `STRATEGY (3-STAR): Thank them for honest feedback. Acknowledge both what worked and what fell short. Invite them to reach out directly. ${signOff}`;
         case 1:
         case 2:
-            return `STRATEGY (${starRating}-STAR): Respond calmly. Acknowledge their experience. Offer to take the conversation offline. End with a sincere statement of wanting to make it right. ${signOff}`;
+            return `STRATEGY (${starRating}-STAR): Respond calmly and professionally. Acknowledge their experience. Explicitly state that "we are working on this issue" or "we are taking steps to improve". Offer to take the conversation offline. End with a sincere statement of wanting to make it right. ${signOff}`;
         default:
             return signOff;
     }
 }
 
-// ─────────────────────────────────────────────
-// Master system prompt
-// ─────────────────────────────────────────────
 function buildSystemPrompt(req: ReviewGenerationRequest, isSimilarityRetry: boolean): string {
     const { min, max } = LENGTH_TARGETS[req.response_length] ?? LENGTH_TARGETS.medium;
 
@@ -87,10 +76,9 @@ function buildSystemPrompt(req: ReviewGenerationRequest, isSimilarityRetry: bool
         ? `[HIPAA COMPLIANCE]: Do NOT confirm any specific treatment or health info. Acknowledge general experience only.`
         : "";
 
-    // SEO Injection Logic
-    const includeBusinessName = Math.random() < 0.45; // ~40-50% frequency
+    const includeBusinessName = Math.random() < 0.45;
     const locationMention = req.business_profile.location_city
-        ? `Naturally mention our location in ${req.business_profile.location_city} if it fits (e.g., "here in ${req.business_profile.location_city}" or "our ${req.business_profile.location_city} location").`
+        ? `Naturally mention our location in ${req.business_profile.location_city} if it fits.`
         : "";
 
     const retryBlock = isSimilarityRetry
@@ -153,9 +141,6 @@ ${examplesBlock}
 Output only the response.`;
 }
 
-// ─────────────────────────────────────────────
-// Single generation call
-// ─────────────────────────────────────────────
 async function generateSingleVariant(
     req: ReviewGenerationRequest,
     isSimilarityRetry: boolean
@@ -163,7 +148,6 @@ async function generateSingleVariant(
     const systemPrompt = buildSystemPrompt(req, isSimilarityRetry);
     const userPrompt = `Write a response to this ${req.star_rating}-star review from ${req.reviewer_name}:\n\n"${req.review_text || "(No text rating)"}"`;
 
-    // Dynamic import to prevent build-time initialization errors
     const Anthropic = (await import("@anthropic-ai/sdk")).default;
     const anthropic = new Anthropic({
         apiKey: process.env.ANTHROPIC_API_KEY || "dummy-key-for-build",
@@ -180,9 +164,6 @@ async function generateSingleVariant(
     return content.type === "text" ? content.text.trim() : "";
 }
 
-// ─────────────────────────────────────────────
-// Main export
-// ─────────────────────────────────────────────
 export async function generateReviewResponse(reviewId: string): Promise<{
     success: boolean;
     text?: string;
@@ -192,75 +173,59 @@ export async function generateReviewResponse(reviewId: string): Promise<{
     generationCount?: number;
     error?: string;
 }> {
-    const supabase = await createAdminClient();
+    const reviewRow = await db.query.reviews.findFirst({
+        where: eq(reviews.id, reviewId),
+        with: {
+            business: true
+        }
+    });
 
-    const { data: review, error: reviewError } = await supabase
-        .from("reviews")
-        .select(`
-          *,
-          businesses (
-            id, name, industry, tone, keywords, user_id,
-            owner_name, hipaa_mode, response_length, location_city
-          )
-        `)
-        .eq("id", reviewId)
-        .single();
+    if (!reviewRow || !reviewRow.business) return { success: false, error: "Review not found" };
 
-    if (reviewError || !review) return { success: false, error: "Review not found" };
+    const biz = reviewRow.business;
 
-    const biz = review.businesses as {
-        id: string; name: string; industry: string; tone: string;
-        keywords: string[]; user_id: string; owner_name: string;
-        hipaa_mode: boolean; response_length: "short" | "medium" | "long";
-        location_city: string | null;
-    };
-
-    // Subscription guard
-    const { data: subscription } = await supabase
-        .from("subscriptions")
-        .select("responses_used_this_month, responses_limit, plan")
-        .eq("user_id", biz.user_id)
-        .single();
+    const subscription = await db.query.subscriptions.findFirst({
+        where: eq(subscriptions.userId, biz.userId),
+        columns: { responsesUsedThisMonth: true, responsesLimit: true, plan: true }
+    });
 
     if (
         subscription &&
-        subscription.responses_limit !== -1 &&
-        subscription.responses_used_this_month >= subscription.responses_limit
+        subscription.responsesLimit !== -1 &&
+        subscription.responsesUsedThisMonth >= subscription.responsesLimit
     ) {
         return {
             success: false,
-            error: `Monthly limit reached (${subscription.responses_limit} responses). Please upgrade your plan.`,
+            error: `Monthly limit reached (${subscription.responsesLimit} responses). Please upgrade your plan.`,
         };
     }
 
-    // Fetch last 5 published responses for THIS business for similarity check
-    const { data: historyRows } = await supabase
-        .from("responses")
-        .select("final_text")
-        .eq("business_id", biz.id)
-        .eq("status", "published")
-        .order("created_at", { ascending: false })
-        .limit(5);
+    const historyRows = await db.query.responses.findMany({
+        where: eq(responses.businessId, biz.id),
+        columns: { finalText: true },
+        orderBy: [desc(responses.createdAt)],
+        limit: 5
+    });
 
-    const historyResponses = historyRows?.map((r: { final_text: string }) => r.final_text).filter(Boolean) || [];
+    const historyResponses = historyRows.map((r: any) => r.finalText).filter(Boolean) || [];
 
     const req: ReviewGenerationRequest = {
-        reviewer_name: review.reviewer_name,
-        star_rating: review.star_rating as 1 | 2 | 3 | 4 | 5,
-        review_text: review.review_text || "",
+        reviewer_name: reviewRow.reviewerName || "Customer",
+        star_rating: reviewRow.starRating as 1 | 2 | 3 | 4 | 5,
+        review_text: reviewRow.reviewText || "",
         business_profile: {
             id: biz.id,
             name: biz.name,
             industry: biz.industry,
             tone: biz.tone,
             keywords: biz.keywords || [],
-            hipaa_mode: biz.hipaa_mode || false,
-            owner_name: biz.owner_name || "",
-            location_city: biz.location_city || "",
+            hipaa_mode: biz.hipaaMode || false,
+            owner_name: biz.ownerName || "",
+            location_city: biz.googleLocationName || "",
         },
         recent_responses: historyResponses,
-        history_responses: [], // Not used for now
-        response_length: biz.response_length || "medium",
+        history_responses: [], 
+        response_length: (biz.responseLength as any) || "medium",
     };
 
     let finalResponse = "";
@@ -275,19 +240,16 @@ export async function generateReviewResponse(reviewId: string): Promise<{
 
         if (!text) continue;
 
-        // Similarity Check
         if (historyResponses.length > 0) {
             const scores = historyResponses.map(prev => jaccardSimilarity(text, prev));
             avgSimilarity = scores.reduce((a, b) => a + b, 0) / scores.length;
 
             if (avgSimilarity > 0.40 && attempt < 2) {
-                // Too similar, retry with stricter instructions
                 continue;
             }
         }
 
-        // QA Validations
-        const qa = validateResponse(text, req.reviewer_name, biz.hipaa_mode);
+        const qa = validateResponse(text, req.reviewer_name, biz.hipaaMode || false);
         text = qa.fixedText;
 
         if (qa.shouldRegenerate && attempt < 2) {
@@ -302,14 +264,13 @@ export async function generateReviewResponse(reviewId: string): Promise<{
         return { success: false, error: "Failed to generate quality response after retries." };
     }
 
-    // Scoring & Flags
     const variationScore = 1 - avgSimilarity;
-    const finalQA = validateResponse(finalResponse, req.reviewer_name, biz.hipaa_mode);
+    const finalQA = validateResponse(finalResponse, req.reviewer_name, biz.hipaaMode || false);
     const flags: ResponseFlag[] = [];
     if (!finalQA.passed) flags.push("quality_check_failed");
     if (avgSimilarity > 0.35) flags.push("high_similarity");
-    if (biz.hipaa_mode) flags.push("hipaa_check_needed");
-    if (review.star_rating <= 2) {
+    if (biz.hipaaMode) flags.push("hipaa_check_needed");
+    if (reviewRow.starRating <= 2) {
         flags.push("negative_review");
         flags.push("owner_review_required");
     }
@@ -317,36 +278,42 @@ export async function generateReviewResponse(reviewId: string): Promise<{
     const confidenceScore = Math.max(0, 1 - (avgSimilarity * 0.5) - (generationCount * 0.1));
     if (confidenceScore < 0.5) flags.push("low_confidence");
 
-    // Persist
-    const status = review.star_rating <= 2 ? "needs_review" : "draft";
+    const status = reviewRow.starRating <= 2 ? "needs_review" : "draft";
 
-    const { error: upsertError } = await supabase
-        .from("responses")
-        .upsert({
-            review_id: reviewId,
-            draft_text: finalResponse,
+    await db.insert(responses).values({
+        reviewId: reviewId,
+        businessId: biz.id,
+        draftText: finalResponse,
+        status: status,
+        aiModel: "claude-3-5-sonnet-20241022",
+        generationCount,
+        similarityScore: avgSimilarity,
+        variationScore,
+        confidenceScore,
+        flags,
+        qaPassed: finalQA.passed,
+    }).onConflictDoUpdate({
+        target: responses.reviewId,
+        set: {
+            draftText: finalResponse,
             status: status,
-            ai_model: "claude-3-5-sonnet-20241022",
-            generation_count: generationCount,
-            similarity_score: avgSimilarity,
-            variation_score: variationScore,
-            confidence_score: confidenceScore,
+            aiModel: "claude-3-5-sonnet-20241022",
+            generationCount,
+            similarityScore: avgSimilarity,
+            variationScore,
+            confidenceScore,
             flags,
-            qa_passed: finalQA.passed,
-            updated_at: new Date().toISOString(),
-        }, { onConflict: "review_id" });
+            qaPassed: finalQA.passed,
+            updatedAt: new Date(),
+        }
+    });
 
-    if (upsertError) {
-        return { success: false, error: `Failed to save response: ${upsertError.message}` };
-    }
-
-    await supabase.from("reviews").update({ status }).eq("id", reviewId);
+    await db.update(reviews).set({ status }).where(eq(reviews.id, reviewId));
 
     if (subscription) {
-        await supabase
-            .from("subscriptions")
-            .update({ responses_used_this_month: subscription.responses_used_this_month + 1 })
-            .eq("user_id", biz.user_id);
+        await db.update(subscriptions)
+            .set({ responsesUsedThisMonth: subscription.responsesUsedThisMonth + 1 })
+            .where(eq(subscriptions.userId, biz.userId));
     }
 
     return {

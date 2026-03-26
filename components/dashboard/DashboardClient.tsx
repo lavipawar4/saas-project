@@ -13,8 +13,8 @@ interface DashboardClientProps {
     business: {
         id: string;
         name: string;
-        is_connected: boolean;
-        last_synced_at: string | null;
+        isConnected: boolean;
+        lastSyncedAt: Date | null;
     } | null;
 }
 
@@ -28,11 +28,10 @@ export default function DashboardClient({ reviews, business }: DashboardClientPr
         drafts: reviews.filter(r => r.status === "draft" || r.status === "needs_review").length,
     };
 
-    const lastSynced = business?.last_synced_at
-        ? new Date(business.last_synced_at).toLocaleString()
+    const lastSynced = business?.lastSyncedAt
+        ? new Date(business.lastSyncedAt).toLocaleString()
         : "Never";
 
-    // Side panel navigation
     const selectedIdx = selectedReview ? reviews.findIndex(r => r.id === selectedReview.id) : -1;
     const hasPrev = selectedIdx > 0;
     const hasNext = selectedIdx < reviews.length - 1;
@@ -40,7 +39,6 @@ export default function DashboardClient({ reviews, business }: DashboardClientPr
     return (
         <>
             <div className="max-w-5xl mx-auto">
-                {/* Header */}
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-8 text-left">
                     <div>
                         <h1 className="text-2xl md:text-3xl font-bold">Review Inbox</h1>
@@ -63,7 +61,6 @@ export default function DashboardClient({ reviews, business }: DashboardClientPr
                     </div>
                 </div>
 
-                {/* Stats */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-8">
                     {[
                         { label: "Total Reviews", value: stats.total, icon: Star, color: "text-indigo-400" },
@@ -84,8 +81,7 @@ export default function DashboardClient({ reviews, business }: DashboardClientPr
                     })}
                 </div>
 
-                {/* Connect CTA */}
-                {!business?.is_connected && (
+                {!business?.isConnected && (
                     <div className="glass-card rounded-xl p-4 md:p-6 mb-6 border border-indigo-500/20 bg-indigo-500/5">
                         <div className="flex flex-col md:flex-row md:items-center gap-4">
                             <div className="flex items-center gap-4">
@@ -109,7 +105,6 @@ export default function DashboardClient({ reviews, business }: DashboardClientPr
                     </div>
                 )}
 
-                {/* Review list with filters */}
                 {reviews.length === 0 ? (
                     <div className="glass-card rounded-xl p-16 text-center">
                         <Star className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-40" />
@@ -123,10 +118,9 @@ export default function DashboardClient({ reviews, business }: DashboardClientPr
                 )}
             </div>
 
-            {/* Side panel */}
             <ReviewSidePanel
                 review={selectedReview}
-                isConnected={business?.is_connected ?? false}
+                isConnected={business?.isConnected ?? false}
                 onClose={() => setSelectedReview(null)}
                 onPrev={() => selectedIdx > 0 && setSelectedReview(reviews[selectedIdx - 1])}
                 onNext={() => selectedIdx < reviews.length - 1 && setSelectedReview(reviews[selectedIdx + 1])}

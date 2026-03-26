@@ -4,10 +4,10 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-    LayoutDashboard, Settings, Star, CreditCard, LogOut, Zap, RefreshCw, BarChart2, Users, Menu, X, MessageSquare, BarChart3
+    LayoutDashboard, Settings, Star, CreditCard, LogOut, Zap, Menu, X, MessageSquare, BarChart3, Users, Shield
 } from "lucide-react";
 import { signOut } from "@/app/actions/auth";
-import type { User } from "@supabase/supabase-js";
+import type { User } from "next-auth";
 
 interface SidebarProps {
     user: User;
@@ -15,11 +15,12 @@ interface SidebarProps {
         full_name: string | null;
         avatar_url: string | null;
         subscription_tier: string;
+        role?: string;
     } | null;
     subscription: {
         plan: string;
-        responses_used_this_month: number;
-        responses_limit: number;
+        responsesUsedThisMonth?: number;
+        responsesLimit?: number;
     } | null;
     autoRespond?: boolean;
 }
@@ -29,7 +30,7 @@ const navItems = [
     { href: "/dashboard", label: "Reviews", icon: MessageSquare },
     { href: "/dashboard/customers", label: "Customers", icon: Users },
     { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
-    { href: "/dashboard/settings", label: "Business Profile", icon: Settings },
+    { href: "/settings", label: "Business Profile", icon: Settings },
     { href: "/pricing", label: "Upgrade", icon: CreditCard },
 ];
 
@@ -37,32 +38,35 @@ export default function DashboardSidebar({ user, profile, subscription, autoResp
     const pathname = usePathname();
     const [isOpen, setIsOpen] = useState(false);
 
-    // Close sidebar on navigation
     useEffect(() => {
         setIsOpen(false);
     }, [pathname]);
 
+    const used = subscription?.responsesUsedThisMonth || 0;
+    const limit = subscription?.responsesLimit || 10;
+    
     const usagePercent = subscription
-        ? subscription.responses_limit === -1
+        ? limit === -1
             ? 0
-            : Math.min(100, (subscription.responses_used_this_month / subscription.responses_limit) * 100)
+            : Math.min(100, (used / limit) * 100)
         : 0;
 
     const planLabels: Record<string, string> = {
         free: "Free Plan",
         starter: "Starter",
         pro: "Pro",
+        professional: "Professional"
     };
 
     const planColors: Record<string, string> = {
         free: "text-muted-foreground",
         starter: "text-blue-400",
+        professional: "text-purple-400",
         pro: "text-indigo-400",
     };
 
     return (
         <>
-            {/* Mobile Header */}
             <div className="md:hidden fixed top-0 left-0 right-0 h-16 glass-card border-b border-border flex items-center justify-between px-4 z-40">
                 <Link href="/dashboard" className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
@@ -78,7 +82,6 @@ export default function DashboardSidebar({ user, profile, subscription, autoResp
                 </button>
             </div>
 
-            {/* Overlay */}
             {isOpen && (
                 <div
                     className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
@@ -90,7 +93,6 @@ export default function DashboardSidebar({ user, profile, subscription, autoResp
                 className={`fixed left-0 top-0 h-screen w-64 glass-card border-r border-border flex flex-col z-50 transition-transform duration-300 md:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"
                     }`}
             >
-                {/* Logo + Auto badge */}
                 <div className="p-6 border-b border-border flex items-center justify-between">
                     <Link href="/dashboard" className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
@@ -111,7 +113,6 @@ export default function DashboardSidebar({ user, profile, subscription, autoResp
                     </button>
                 </div>
 
-                {/* Navigation */}
                 <nav className="flex-1 p-4 space-y-1">
                     {navItems.map((item) => {
                         const Icon = item.icon;
@@ -130,9 +131,18 @@ export default function DashboardSidebar({ user, profile, subscription, autoResp
                             </Link>
                         );
                     })}
+                    
+                    {profile?.role === "admin" && (
+                         <Link
+                            href="/admin"
+                            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-all border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20`}
+                        >
+                            <Shield className="w-4 h-4" />
+                            Admin Panel
+                        </Link>
+                    )}
                 </nav>
 
-                {/* Usage meter */}
                 {subscription && (
                     <div className="p-4 border-t border-border">
                         <div className="glass-card rounded-xl p-3">
@@ -152,15 +162,14 @@ export default function DashboardSidebar({ user, profile, subscription, autoResp
                                 />
                             </div>
                             <p className="text-xs text-muted-foreground">
-                                {subscription.responses_limit === -1
+                                {limit === -1
                                     ? "Unlimited"
-                                    : `${subscription.responses_used_this_month} / ${subscription.responses_limit}`}
+                                    : `${used} / ${limit}`}
                             </p>
                         </div>
                     </div>
                 )}
 
-                {/* User + Sign out */}
                 <div className="p-4 border-t border-border">
                     <div className="flex items-center gap-3 mb-3">
                         <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400 text-sm font-semibold shrink-0">

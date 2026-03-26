@@ -29,15 +29,15 @@ export default function SettingsForm({ business }: { business: Business }) {
     const [isPending, startTransition] = useTransition();
     const [name, setName] = useState(business.name);
     const [industry, setIndustry] = useState(business.industry);
-    const [locationCity, setLocationCity] = useState(business.location_city || "");
+    const [locationCity, setLocationCity] = useState(business.locationCity || "");
     const [tone, setTone] = useState<string>(business.tone);
     const [keywords, setKeywords] = useState<string[]>(business.keywords || []);
     const [keywordInput, setKeywordInput] = useState("");
     const [responseLength, setResponseLength] = useState<"short" | "medium" | "long">(
-        business.response_length || "medium"
+        business.responseLength as any || "medium"
     );
-    const [autoRespond, setAutoRespond] = useState(business.auto_respond || false);
-    const [hipaaMode, setHipaaMode] = useState(business.hipaa_mode || false);
+    const [autoRespond, setAutoRespond] = useState(business.autoRespond || false);
+    const [hipaaMode, setHipaaMode] = useState(business.hipaaMode || false);
     const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
     function handleIndustryChange(newIndustry: string) {
@@ -65,10 +65,10 @@ export default function SettingsForm({ business }: { business: Business }) {
         startTransition(async () => {
             const result = await updateBusinessSettings(business.id, {
                 name, industry, tone, keywords,
-                location_city: locationCity,
-                response_length: responseLength,
-                auto_respond: autoRespond,
-                hipaa_mode: hipaaMode,
+                locationCity,
+                responseLength,
+                autoRespond,
+                hipaaMode,
             });
             setFeedback({
                 type: result.success ? "success" : "error",

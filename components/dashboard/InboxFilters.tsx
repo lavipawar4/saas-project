@@ -45,11 +45,11 @@ export default function InboxFilters({ reviews, onSelectReview }: InboxFiltersPr
         // Date range filter
         if (dateFrom) {
             const from = new Date(dateFrom).getTime();
-            list = list.filter(r => r.google_created_at && new Date(r.google_created_at).getTime() >= from);
+            list = list.filter(r => r.googleCreatedAt && r.googleCreatedAt.getTime() >= from);
         }
         if (dateTo) {
             const to = new Date(dateTo).getTime() + 86_400_000; // inclusive end
-            list = list.filter(r => r.google_created_at && new Date(r.google_created_at).getTime() <= to);
+            list = list.filter(r => r.googleCreatedAt && r.googleCreatedAt.getTime() <= to);
         }
 
         return list;

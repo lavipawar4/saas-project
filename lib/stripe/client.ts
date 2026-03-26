@@ -1,7 +1,8 @@
 import Stripe from "stripe";
-import { createAdminClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
+import { users, subscriptions } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 
-// Lazy Stripe initialization — avoids crash when STRIPE_SECRET_KEY is not set at build time
 function getStripe() {
     return new Stripe(process.env.STRIPE_SECRET_KEY!, {
         apiVersion: "2025-02-24.acacia",
@@ -9,18 +10,6 @@ function getStripe() {
 }
 
 export const PLANS = {
-    free: {
-        name: "Free",
-        price: 0,
-        responses: 10,
-        priceId: null,
-        features: [
-            "10 AI responses/month",
-            "1 Business location",
-            "Basic tone settings",
-            "Email support",
-        ],
-    },
     starter: {
         name: "Starter",
         price: 29,
@@ -34,11 +23,24 @@ export const PLANS = {
             "Priority support",
         ],
     },
+    professional: {
+        name: "Professional",
+        price: 49,
+        responses: 500,
+        priceId: process.env.STRIPE_PRO_PRICE_ID, 
+        features: [
+            "500 AI responses/month",
+            "10 Business locations",
+            "Custom industry prompts",
+            "Advanced analytics",
+            "Priority support",
+        ],
+    },
     pro: {
         name: "Pro",
         price: 79,
-        responses: -1, // unlimited
-        priceId: process.env.STRIPE_PRO_PRICE_ID,
+        responses: -1, 
+        priceId: process.env.STRIPE_BUSINESS_PRICE_ID || process.env.STRIPE_PRO_PRICE_ID, 
         features: [
             "Unlimited AI responses",
             "Unlimited locations",
@@ -57,18 +59,16 @@ export async function checkUsageLimit(userId: string): Promise<{
     used: number;
     limit: number;
 }> {
-    const supabase = await createAdminClient();
-    const { data: subscription } = await supabase
-        .from("subscriptions")
-        .select("plan, responses_used_this_month, responses_limit")
-        .eq("user_id", userId)
-        .single();
+    const subscription = await db.query.subscriptions.findFirst({
+        where: eq(subscriptions.userId, userId),
+        columns: { plan: true, responsesUsedThisMonth: true, responsesLimit: true }
+    });
 
     if (!subscription) {
-        return { allowed: false, remaining: 0, plan: "free", used: 0, limit: 0 };
+        return { allowed: false, remaining: 0, plan: "none", used: 0, limit: 0 };
     }
 
-    const { plan, responses_used_this_month: used, responses_limit: limit } = subscription;
+    const { plan, responsesUsedThisMonth: used, responsesLimit: limit } = subscription;
     const unlimited = limit === -1;
     const remaining = unlimited ? 9999 : Math.max(0, limit - used);
     const allowed = unlimited || used < limit;
@@ -76,29 +76,28 @@ export async function checkUsageLimit(userId: string): Promise<{
     return { allowed, remaining, plan, used, limit };
 }
 
-export async function createCheckoutSession(userId: string, plan: "starter" | "pro", userEmail: string): Promise<string> {
+export async function createCheckoutSession(userId: string, plan: "starter" | "professional" | "pro", userEmail: string): Promise<string> {
     const stripe = getStripe();
-    const supabase = await createAdminClient();
 
-    // Get or create Stripe customer
-    let { data: profile } = await supabase
-        .from("profiles")
-        .select("stripe_customer_id")
-        .eq("id", userId)
-        .single();
+    let profile = await db.query.users.findFirst({
+        where: eq(users.id, userId),
+        columns: { stripeCustomerId: true }
+    });
 
-    let customerId = profile?.stripe_customer_id;
+    let customerId = profile?.stripeCustomerId;
     if (!customerId) {
         const customer = await stripe.customers.create({
             email: userEmail,
             metadata: { supabase_user_id: userId },
         });
         customerId = customer.id;
-        await supabase.from("profiles").update({ stripe_customer_id: customerId }).eq("id", userId);
+        await db.update(users)
+            .set({ stripeCustomerId: customerId })
+            .where(eq(users.id, userId));
     }
 
-    const priceId = PLANS[plan].priceId;
-    if (!priceId) throw new Error("Invalid plan");
+    const priceId = (PLANS as any)[plan].priceId;
+    if (!priceId) throw new Error("Invalid plan or missing price ID");
 
     const session = await stripe.checkout.sessions.create({
         customer: customerId,
@@ -115,17 +114,16 @@ export async function createCheckoutSession(userId: string, plan: "starter" | "p
 
 export async function createPortalSession(userId: string): Promise<string> {
     const stripe = getStripe();
-    const supabase = await createAdminClient();
-    const { data: profile } = await supabase
-        .from("profiles")
-        .select("stripe_customer_id")
-        .eq("id", userId)
-        .single();
+    
+    const profile = await db.query.users.findFirst({
+        where: eq(users.id, userId),
+        columns: { stripeCustomerId: true }
+    });
 
-    if (!profile?.stripe_customer_id) throw new Error("No Stripe customer found");
+    if (!profile?.stripeCustomerId) throw new Error("No Stripe customer found");
 
     const session = await stripe.billingPortal.sessions.create({
-        customer: profile.stripe_customer_id,
+        customer: profile.stripeCustomerId,
         return_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings`,
     });
 

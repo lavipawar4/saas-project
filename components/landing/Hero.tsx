@@ -76,8 +76,8 @@ export default function Hero() {
 
                 {/* CTAs */}
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16 animate-fade-in" style={{ animationDelay: "300ms" }}>
-                    <Link href="/signup" className="group flex items-center gap-2 px-7 py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-base transition-all shadow-2xl shadow-indigo-500/30 hover:shadow-indigo-500/50 hover:scale-[1.03]">
-                        Start free — 10 responses/month
+                    <Link href="/login" className="group flex items-center gap-2 px-7 py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-base transition-all shadow-2xl shadow-indigo-500/30 hover:shadow-indigo-500/50 hover:scale-[1.03]">
+                        Log in
                         <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                     </Link>
                     <Link href="#how-it-works" className="flex items-center gap-2 px-7 py-3.5 rounded-xl border border-white/10 hover:border-white/20 text-sm font-medium transition-all hover:bg-white/5">
@@ -96,7 +96,7 @@ export default function Hero() {
                     ].map((s) => (
                         <div key={s.label} className="bg-[#0a0f1e] px-6 py-6 text-center">
                             <div className="text-3xl font-extrabold tracking-tight">
-                                {s.display}<span className="text-indigo-400">{s.suffix}</span>
+                                <span style={{ color: '#ffffff' }} className="!text-white">{s.display}</span><span className="text-indigo-400 font-bold">{s.suffix}</span>
                             </div>
                             <div className="text-xs text-muted-foreground mt-1">{s.label}</div>
                         </div>

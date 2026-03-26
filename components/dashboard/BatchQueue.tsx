@@ -56,25 +56,22 @@ export default function BatchQueue({ pendingReviews, businessId }: BatchQueuePro
 
             const { results } = await res.json();
 
-            // Fetch the generated drafts from Supabase via re-fetch
-            // We'll read the data back from the page response
             const draftItems: DraftResult[] = [];
             for (const pending of pendingReviews) {
                 const result = results.find((r: { reviewId: string }) => r.reviewId === pending.id);
                 if (result?.success === false) continue;
 
-                // Refetch the response for this review
                 const resp = await fetch(`/api/reviews/${pending.id}/draft`);
                 if (!resp.ok) continue;
-                const { draft_text } = await resp.json();
+                const { draftText } = await resp.json();
 
                 draftItems.push({
                     reviewId: pending.id,
-                    reviewerName: pending.reviewer_name,
-                    starRating: pending.star_rating,
-                    reviewText: pending.review_text,
-                    draftText: draft_text,
-                    edited: draft_text,
+                    reviewerName: pending.reviewerName || "Anonymous",
+                    starRating: pending.starRating || 5,
+                    reviewText: pending.reviewText || null,
+                    draftText: draftText,
+                    edited: draftText,
                     status: "pending",
                 });
                 setProgress(Math.round((draftItems.length / pendingCount) * 100));
@@ -113,7 +110,6 @@ export default function BatchQueue({ pendingReviews, businessId }: BatchQueuePro
             count++;
         }
 
-        // Skip the ones marked skipped
         for (const draft of drafts.filter((d) => d.status === "skipped")) {
             await skipReview(draft.reviewId);
         }
@@ -135,7 +131,6 @@ export default function BatchQueue({ pendingReviews, businessId }: BatchQueuePro
         </div>
     );
 
-    // IDLE: Button to launch batch
     if (phase === "idle") {
         return (
             <button
@@ -149,7 +144,6 @@ export default function BatchQueue({ pendingReviews, businessId }: BatchQueuePro
         );
     }
 
-    // GENERATING
     if (phase === "generating") {
         return (
             <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center px-4">
@@ -168,7 +162,6 @@ export default function BatchQueue({ pendingReviews, businessId }: BatchQueuePro
         );
     }
 
-    // DONE
     if (phase === "done") {
         return (
             <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center px-4">
@@ -191,7 +184,6 @@ export default function BatchQueue({ pendingReviews, businessId }: BatchQueuePro
         );
     }
 
-    // PUBLISHING
     if (phase === "publishing") {
         return (
             <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center px-4">
@@ -204,11 +196,9 @@ export default function BatchQueue({ pendingReviews, businessId }: BatchQueuePro
         );
     }
 
-    // REVIEWING phase — slide-over drawer
     return (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center">
             <div className="w-full max-w-2xl max-h-[90vh] flex flex-col glass-card border border-white/10 rounded-t-2xl md:rounded-2xl overflow-hidden">
-                {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
                     <div>
                         <h2 className="font-semibold">Review Batch Queue</h2>
@@ -224,7 +214,6 @@ export default function BatchQueue({ pendingReviews, businessId }: BatchQueuePro
                     </button>
                 </div>
 
-                {/* Progress bar */}
                 <div className="h-1 bg-white/5">
                     <div
                         className="h-1 bg-gradient-to-r from-indigo-500 to-purple-500 transition-all"
@@ -232,7 +221,6 @@ export default function BatchQueue({ pendingReviews, businessId }: BatchQueuePro
                     />
                 </div>
 
-                {/* Error if any */}
                 {error && (
                     <div className="mx-6 mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center gap-2 text-sm text-red-400">
                         <AlertCircle className="w-4 h-4 shrink-0" />
@@ -240,10 +228,8 @@ export default function BatchQueue({ pendingReviews, businessId }: BatchQueuePro
                     </div>
                 )}
 
-                {/* Review + Draft content */}
                 {current && (
                     <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                        {/* Review */}
                         <div className="rounded-xl p-4 bg-white/[0.03] border border-white/5">
                             <div className="flex items-center gap-3 mb-2">
                                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500/30 to-purple-500/30 flex items-center justify-center text-xs font-bold text-indigo-300 shrink-0">
@@ -265,7 +251,6 @@ export default function BatchQueue({ pendingReviews, businessId }: BatchQueuePro
                             </p>
                         </div>
 
-                        {/* AI Draft — editable */}
                         <div>
                             <label className="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-2 block">
                                 AI Draft Response
@@ -284,9 +269,7 @@ export default function BatchQueue({ pendingReviews, businessId }: BatchQueuePro
                     </div>
                 )}
 
-                {/* Action row */}
                 <div className="px-6 py-4 border-t border-white/5 flex items-center gap-3">
-                    {/* Previous */}
                     <button
                         onClick={() => setCurrentIdx((i) => Math.max(0, i - 1))}
                         disabled={currentIdx === 0}
@@ -295,7 +278,6 @@ export default function BatchQueue({ pendingReviews, businessId }: BatchQueuePro
                         <ChevronLeft className="w-4 h-4" />
                     </button>
 
-                    {/* Skip */}
                     <button
                         onClick={skipCurrent}
                         className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-white/10 hover:border-white/20 text-sm text-muted-foreground hover:text-foreground transition-all"
@@ -304,7 +286,6 @@ export default function BatchQueue({ pendingReviews, businessId }: BatchQueuePro
                         Skip
                     </button>
 
-                    {/* Approve */}
                     <button
                         onClick={approveCurrent}
                         className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 text-sm font-medium transition-all"
@@ -313,7 +294,6 @@ export default function BatchQueue({ pendingReviews, businessId }: BatchQueuePro
                         Approve
                     </button>
 
-                    {/* Next */}
                     <button
                         onClick={() => setCurrentIdx((i) => Math.min(drafts.length - 1, i + 1))}
                         disabled={currentIdx === drafts.length - 1}
@@ -322,7 +302,6 @@ export default function BatchQueue({ pendingReviews, businessId }: BatchQueuePro
                         <ChevronRight className="w-4 h-4" />
                     </button>
 
-                    {/* Publish all approved */}
                     <button
                         onClick={publishAll}
                         disabled={approvedCount === 0}

@@ -2,32 +2,19 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { signIn as nextAuthSignIn, signOut as nextAuthSignOut, auth } from "@/auth";
+import { db } from "@/lib/db";
+import { businesses, users } from "@/lib/db/schema";
+import { eq, and } from "drizzle-orm";
 
-// Login with email + password
-export async function loginWithEmail(email: string, password: string) {
-    const supabase = await createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error: error.message };
-    redirect("/dashboard");
-}
-
-// Sign up with email + password
-export async function signUpWithEmail(email: string, password: string, fullName: string) {
-    const supabase = await createClient();
-    const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: fullName } },
-    });
-    if (error) return { error: error.message };
-    return { success: true, message: "Check your email to confirm your account" };
+// Session and Auth utilities for server side usage
+export async function getSession() {
+    return await auth();
 }
 
 // Sign out
 export async function signOut() {
-    const supabase = await createClient();
-    await supabase.auth.signOut();
+    await nextAuthSignOut({ redirect: false });
     redirect("/login");
 }
 
@@ -39,25 +26,27 @@ export async function updateBusinessSettings(
         industry?: string;
         tone?: string;
         keywords?: string[];
-        response_length?: "short" | "medium" | "long";
-        auto_respond?: boolean;
-        hipaa_mode?: boolean;
-        location_city?: string;
+        responseLength?: "short" | "medium" | "long";
+        autoRespond?: boolean;
+        hipaaMode?: boolean;
+        ownerName?: string;
+        locationCity?: string;
     }
 ): Promise<{ success: boolean; error?: string }> {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, error: "Unauthorized" };
+    const session = await auth();
+    const user = session?.user;
+    if (!user || !user.id) return { success: false, error: "Unauthorized" };
 
-    const { error } = await supabase
-        .from("businesses")
-        .update({ ...data, updated_at: new Date().toISOString() })
-        .eq("id", businessId)
-        .eq("user_id", user.id);
+    try {
+        await db.update(businesses)
+            .set({ ...data, updatedAt: new Date() })
+            .where(and(eq(businesses.id, businessId), eq(businesses.userId, user.id)));
 
-    if (error) return { success: false, error: error.message };
-    revalidatePath("/settings");
-    return { success: true };
+        revalidatePath("/settings");
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
 }
 
 // Create initial business profile during onboarding
@@ -66,30 +55,36 @@ export async function createBusiness(data: {
     industry: string;
     tone: string;
     keywords: string[];
-    owner_name?: string;
-    location_city?: string;
+    ownerName?: string;
 }): Promise<{ success: boolean; businessId?: string; error?: string }> {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, error: "Unauthorized" };
+    const session = await auth();
+    const user = session?.user;
+    if (!user || !user.id) return { success: false, error: "Unauthorized" };
 
-    const { data: business, error } = await supabase
-        .from("businesses")
-        .insert({ ...data, user_id: user.id })
-        .select("id")
-        .single();
+    try {
+        const [business] = await db.insert(businesses)
+            .values({
+                ...data,
+                userId: user.id,
+            })
+            .returning({ id: businesses.id });
 
-    if (error) return { success: false, error: error.message };
-    revalidatePath("/dashboard");
-    return { success: true, businessId: business.id };
+        revalidatePath("/dashboard");
+        return { success: true, businessId: business.id };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
 }
 
 // Complete onboarding
 export async function completeOnboarding(): Promise<{ success: boolean }> {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false };
+    const session = await auth();
+    const user = session?.user;
+    if (!user || !user.id) return { success: false };
 
-    await supabase.from("profiles").update({ onboarding_completed: true }).eq("id", user.id);
+    await db.update(users)
+        .set({ onboardingCompleted: true })
+        .where(eq(users.id, user.id));
+        
     redirect("/dashboard");
 }

@@ -35,7 +35,7 @@ export default function Navbar() {
 
                 {/* CTA buttons */}
                 <div className="hidden md:flex items-center gap-3">
-                    <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground transition-colors px-4 py-2">
+                    <Link href="/signup" className="text-sm text-muted-foreground hover:text-foreground transition-colors px-4 py-2">
                         Sign in
                     </Link>
                     <Link href="/signup" className="text-sm font-semibold px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:scale-[1.02]">
@@ -57,7 +57,7 @@ export default function Navbar() {
                         <Link href="#how-it-works" className="block text-sm text-muted-foreground py-2" onClick={() => setMobileOpen(false)}>How it works</Link>
                         <Link href="/pricing" className="block text-sm text-muted-foreground py-2" onClick={() => setMobileOpen(false)}>Pricing</Link>
                         <div className="pt-2 flex flex-col gap-2">
-                            <Link href="/login" className="text-sm text-center py-2.5 rounded-lg border border-white/10 hover:border-white/20 transition-colors">Sign in</Link>
+                            <Link href="/signup" className="text-sm text-center py-2.5 rounded-lg border border-white/10 hover:border-white/20 transition-colors">Sign in</Link>
                             <Link href="/signup" className="text-sm font-semibold text-center py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all">Start free →</Link>
                         </div>
                     </div>

@@ -9,21 +9,21 @@ interface ResponseEditorProps {
     reviewId: string;
     isConnected?: boolean;
     existingResponse: {
-        draft_text: string;
+        draftText: string;
         status: string;
-        generation_count: number;
-        similarity_score: number | null;
-        confidence_score: number | null;
-        variation_score: number | null;
+        generationCount: number;
+        similarityScore: number | null;
+        confidenceScore: number | null;
+        variationScore: number | null;
         flags: string[] | null;
-        alternate_versions: string[] | null;
-        qa_passed: boolean;
+        alternateVersions: string[] | null;
+        qaPassed: boolean;
     } | null;
     reviewStatus: string;
 }
 
 const CHAR_MIN = 100;
-const CHAR_MAX = 500; // Google recommended display range
+const CHAR_MAX = 500;
 const WORD_TARGET_MIN = 30;
 const WORD_TARGET_MAX = 180;
 
@@ -35,23 +35,21 @@ export default function ResponseEditor({
 }: ResponseEditorProps) {
     const router = useRouter();
     const [isPending, startTransition] = useTransition();
-    const [text, setText] = useState(existingResponse?.draft_text || "");
+    const [text, setText] = useState(existingResponse?.draftText || "");
     const [isEditing, setIsEditing] = useState(false);
     const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
     const [action, setAction] = useState<"generate" | "save" | "publish" | "skip" | null>(null);
     const [copied, setCopied] = useState(false);
-    const [variationScore, setVariationScore] = useState<number | null>(existingResponse?.variation_score ?? null);
+    const [variationScore, setVariationScore] = useState<number | null>(existingResponse?.variationScore ?? null);
     const [flags, setFlags] = useState<string[]>(existingResponse?.flags ?? []);
 
     const charCount = text.length;
     const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
     const isPublished = reviewStatus === "published" || reviewStatus === "auto_published";
 
-    // Derived warnings
     const showSimilarityWarning = variationScore !== null && variationScore < 0.55;
     const showHipaaWarning = flags.includes("hipaa_check_needed");
 
-    // Char count colour
     const charColor = charCount === 0 ? "" : charCount < CHAR_MIN || charCount > CHAR_MAX ? "text-yellow-400" : "text-green-400";
     const charBarColor = charCount < CHAR_MIN || charCount > CHAR_MAX ? "bg-yellow-500" : "bg-green-500";
 
@@ -124,7 +122,6 @@ export default function ResponseEditor({
 
     return (
         <div className="glass-card rounded-xl p-6 h-full flex flex-col gap-4">
-            {/* Header */}
             <div className="flex items-center justify-between">
                 <h2 className="font-semibold flex items-center gap-2">
                     <Zap className="w-4 h-4 text-indigo-400" />
@@ -136,7 +133,6 @@ export default function ResponseEditor({
                     )}
                 </h2>
 
-                {/* Copy button — always available */}
                 {text && (
                     <button
                         onClick={handleCopy}
@@ -148,7 +144,6 @@ export default function ResponseEditor({
                 )}
             </div>
 
-            {/* Warnings */}
             {showSimilarityWarning && (
                 <div className="flex items-start gap-2.5 p-3 rounded-lg bg-blue-500/8 border border-blue-500/20">
                     <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
@@ -169,7 +164,6 @@ export default function ResponseEditor({
                 </div>
             )}
 
-            {/* Feedback banner */}
             {feedback && (
                 <div className={`p-3 rounded-lg text-sm border ${feedback.type === "success"
                         ? "bg-green-500/10 border-green-500/20 text-green-400"
@@ -179,7 +173,6 @@ export default function ResponseEditor({
                 </div>
             )}
 
-            {/* Textarea */}
             <div className="relative flex-1">
                 <textarea
                     value={text}
@@ -191,7 +184,6 @@ export default function ResponseEditor({
                 />
             </div>
 
-            {/* Counters — char + word */}
             <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-3">
                     <span className={charColor || "text-muted-foreground"}>
@@ -216,10 +208,8 @@ export default function ResponseEditor({
                 )}
             </div>
 
-            {/* Actions */}
             {!isPublished && (
                 <div className="space-y-2">
-                    {/* Generate / Regenerate */}
                     <button
                         onClick={handleGenerate}
                         disabled={isPending}
@@ -232,7 +222,6 @@ export default function ResponseEditor({
                         )}
                     </button>
 
-                    {/* Save draft */}
                     {isEditing && text && (
                         <button
                             onClick={handleSave}
@@ -247,7 +236,6 @@ export default function ResponseEditor({
                         </button>
                     )}
 
-                    {/* Publish to Google */}
                     {text && (
                         <div className="relative group">
                             <button
@@ -261,7 +249,6 @@ export default function ResponseEditor({
                                     <><Send className="w-4 h-4" /> Publish to Google</>
                                 )}
                             </button>
-                            {/* Tooltip when not connected */}
                             {!isConnected && (
                                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 rounded-lg bg-popover border border-border text-xs text-muted-foreground whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
                                     <AlertTriangle className="w-3 h-3 inline-block mr-1 text-yellow-400" />
@@ -271,7 +258,6 @@ export default function ResponseEditor({
                         </div>
                     )}
 
-                    {/* Skip */}
                     <button
                         onClick={handleSkip}
                         disabled={isPending}

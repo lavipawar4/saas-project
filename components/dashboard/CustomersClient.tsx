@@ -6,11 +6,11 @@ import { addCustomer, deleteCustomer, sendReviewRequest } from "@/app/actions/au
 
 interface Customer {
     id: string;
-    full_name: string;
+    fullName: string;
     email: string;
     phone: string | null;
     tags: string[];
-    last_interaction_at: string | null;
+    lastInteractionAt: string | null;
 }
 
 interface CustomersClientProps {
@@ -26,7 +26,7 @@ export default function CustomersClient({ business, initialCustomers }: Customer
     const [sendingId, setSendingId] = useState<string | null>(null);
 
     const filteredCustomers = customers.filter(c =>
-        c.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
     );
@@ -38,8 +38,6 @@ export default function CustomersClient({ business, initialCustomers }: Customer
         const result = await addCustomer(business.id, formData);
 
         if (result.success) {
-            // In a real app, we'd probably re-fetch or use the returned object
-            // For now, let's just close and hope revalidatePath handles it (though state won't update without reload)
             window.location.reload();
         } else {
             alert("Error adding customer: " + result.error);
@@ -82,11 +80,10 @@ export default function CustomersClient({ business, initialCustomers }: Customer
                 </button>
             </div>
 
-            {/* Stats Summary */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {[
                     { label: "Total Customers", value: customers.length, icon: Users, color: "text-blue-400" },
-                    { label: "Requests Sent", value: "0", icon: Mail, color: "text-indigo-400" }, // Mocked for now
+                    { label: "Requests Sent", value: "0", icon: Mail, color: "text-indigo-400" },
                     { label: "Active Tags", value: Array.from(new Set(customers.flatMap(c => c.tags))).length, icon: Tag, color: "text-purple-400" }
                 ].map((stat, i) => {
                     const Icon = stat.icon;
@@ -104,7 +101,6 @@ export default function CustomersClient({ business, initialCustomers }: Customer
                 })}
             </div>
 
-            {/* List Header / Filters */}
             <div className="glass-card overflow-hidden">
                 <div className="p-4 border-b border-border flex flex-col md:flex-row gap-4 items-center">
                     <div className="relative flex-1 w-full">
@@ -119,7 +115,6 @@ export default function CustomersClient({ business, initialCustomers }: Customer
                     </div>
                 </div>
 
-                {/* Table */}
                 <div className="overflow-x-auto -mx-4 md:mx-0">
                     <div className="inline-block min-w-full align-middle">
                         <table className="min-w-full text-left border-collapse">
@@ -137,10 +132,10 @@ export default function CustomersClient({ business, initialCustomers }: Customer
                                         <td className="px-4 md:px-6 py-4">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-secondary flex items-center justify-center text-xs md:text-sm font-bold text-indigo-400 shrink-0">
-                                                    {customer.full_name.charAt(0)}
+                                                    {customer.fullName.charAt(0)}
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <p className="font-semibold truncate max-w-[120px] md:max-w-none">{customer.full_name}</p>
+                                                    <p className="font-semibold truncate max-w-[120px] md:max-w-none">{customer.fullName}</p>
                                                     <p className="text-[10px] md:text-xs text-muted-foreground truncate max-w-[120px] md:max-w-none">{customer.email}</p>
                                                 </div>
                                             </div>
@@ -157,8 +152,8 @@ export default function CustomersClient({ business, initialCustomers }: Customer
                                             </div>
                                         </td>
                                         <td className="px-4 md:px-6 py-4 text-xs text-muted-foreground hidden md:table-cell">
-                                            {customer.last_interaction_at
-                                                ? new Date(customer.last_interaction_at).toLocaleDateString()
+                                            {customer.lastInteractionAt
+                                                ? new Date(customer.lastInteractionAt).toLocaleDateString()
                                                 : "Never"}
                                         </td>
                                         <td className="px-4 md:px-6 py-4 text-right">
@@ -196,7 +191,6 @@ export default function CustomersClient({ business, initialCustomers }: Customer
                 </div>
             </div>
 
-            {/* Add Customer Modal */}
             {isAddModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
                     <div className="glass-card w-full max-w-md animate-in fade-in zoom-in duration-200">
@@ -236,5 +230,3 @@ export default function CustomersClient({ business, initialCustomers }: Customer
         </div>
     );
 }
-
-

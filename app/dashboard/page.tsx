@@ -1,5 +1,8 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { auth } from "@/auth";
+import { db } from "@/lib/db";
+import { businesses, reviews } from "@/lib/db/schema";
+import { eq, desc } from "drizzle-orm";
 import { triggerReviewSync } from "@/app/actions/reviews";
 import DashboardClient from "@/components/dashboard/DashboardClient";
 import type { ReviewWithResponse } from "@/lib/types/database";
@@ -11,33 +14,35 @@ export default async function DashboardPage({
 }: {
     searchParams: Promise<{ sync?: string }>;
 }) {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) redirect("/login");
+    const session = await auth();
+    const user = session?.user;
+    if (!user || !user.id) redirect("/login");
 
-    const { data: business } = await supabase
-        .from("businesses")
-        .select("id, name, is_connected, last_synced_at")
-        .eq("user_id", user.id)
-        .single();
+    const business = await db.query.businesses.findFirst({
+        where: eq(businesses.userId, user.id),
+    });
 
-    // Handle sync trigger from URL param
     const params = await searchParams;
     if (params?.sync === "1" && business?.id) {
         await triggerReviewSync(business.id);
     }
 
-    const { data: reviews } = await supabase
-        .from("reviews")
-        .select(`*, responses(*)`)
-        .eq("business_id", business?.id || "")
-        .order("google_created_at", { ascending: false })
-        .limit(100);
+    let reviewData: any[] = [];
+    if (business?.id) {
+        reviewData = await db.query.reviews.findMany({
+            where: eq(reviews.businessId, business.id),
+            with: {
+                responses: true
+            },
+            orderBy: [desc(reviews.googleCreatedAt)],
+            limit: 100
+        });
+    }
 
     return (
         <DashboardClient
-            reviews={(reviews || []) as ReviewWithResponse[]}
-            business={business}
+            reviews={reviewData as ReviewWithResponse[]}
+            business={business as any}
         />
     );
 }

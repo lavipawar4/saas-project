@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createCheckoutSession } from "@/lib/stripe/client";
-import { createClient } from "@/lib/supabase/server";
+import { auth } from "@/auth";
 
 export async function POST(request: NextRequest) {
     try {
-        const supabase = await createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
+        const session = await auth();
+        const user = session?.user;
+        if (!user || !user.id) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
         const { plan } = await request.json();
-        if (!plan || !["starter", "pro"].includes(plan)) {
+        if (!plan || !["starter", "professional", "pro"].includes(plan)) {
             return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
         }
 
