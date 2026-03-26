@@ -16,7 +16,7 @@ export default async function DashboardLayout({
 
     const profile = await db.query.users.findFirst({
         where: eq(users.id, user.id),
-        columns: { onboardingCompleted: true, name: true, image: true, subscriptionTier: true }
+        columns: { onboardingCompleted: true, name: true, image: true, subscriptionTier: true, role: true }
     });
 
     if (profile && !profile.onboardingCompleted) {

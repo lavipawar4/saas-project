@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ 
             sessionUser: session.user,
             dbUser: dbUser,
+            // @ts-ignore
             match: session.user.role === dbUser?.role
         });
     } catch (error: any) {
