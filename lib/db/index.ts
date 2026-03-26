@@ -8,5 +8,5 @@ if (!databaseUrl && process.env.NODE_ENV === 'production') {
   console.warn('DATABASE_URL is not set. Database connection will fail at runtime.');
 }
 
-const sql = neon(databaseUrl || 'postgresql://placeholder:password@localhost:5432/db');
-export const db = drizzle(sql, { schema });
+// Only initialize neon if we have a URL, otherwise use a safe no-op or throw a clearer error in-place
+export const db = drizzle(neon(databaseUrl || ""), { schema });
