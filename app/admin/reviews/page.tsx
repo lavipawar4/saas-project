@@ -6,6 +6,8 @@ import {
     Filter, MoreVertical, Calendar, Globe
 } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 async function getReviewsData() {
     return await db.query.reviews.findMany({
         with: {

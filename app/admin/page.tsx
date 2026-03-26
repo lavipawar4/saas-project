@@ -8,6 +8,8 @@ import {
 import Link from "next/link";
 import { ReactNode } from "react";
 
+export const dynamic = "force-dynamic";
+
 async function getAdminData() {
     const [reviewsCountRes] = await db.select({ count: sql<number>`count(*)` }).from(reviews);
     const [responsesCountRes] = await db.select({ count: sql<number>`count(*)` }).from(responses);

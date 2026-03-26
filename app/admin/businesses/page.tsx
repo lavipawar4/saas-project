@@ -7,6 +7,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+export const dynamic = "force-dynamic";
+
 async function getBusinessesData() {
     return await db.query.businesses.findMany({
         with: {
