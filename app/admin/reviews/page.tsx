@@ -73,7 +73,7 @@ export default async function AdminReviewsPage() {
                                         </span>
                                     </div>
                                     <p className="text-sm text-[#d1d5db] leading-relaxed max-w-2xl italic">
-                                        &quot;{review.comment || "No comment provided."}&quot;
+                                        &quot;{review.reviewText || "No comment provided."}&quot;
                                     </p>
                                 </div>
                             </div>

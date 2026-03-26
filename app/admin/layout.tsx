@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import AdminSidebar from "@/components/admin/Sidebar";
 import { Search, Bell, RotateCw, Menu } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
 export default async function AdminLayout({
     children,
@@ -51,10 +52,12 @@ export default async function AdminLayout({
                             <RotateCw className="w-5 h-5" />
                         </button>
                         <Link href="/profile" className="flex items-center gap-3 pl-4 border-l border-[#2b365e] cursor-pointer hover:opacity-80 transition-opacity">
-                            <img 
+                            <Image 
                                 src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || "Admin")}&background=4318FF&color=fff&rounded=true`} 
                                 alt="Profile" 
-                                className="w-10 h-10 rounded-full border-2 border-[#4318FF]/20"
+                                width={40}
+                                height={40}
+                                className="rounded-full border-2 border-[#4318FF]/20"
                             />
                             <div className="hidden md:block text-left">
                                 <p className="text-sm font-semibold text-white leading-tight">{user?.name || "Lavi Pawar"}</p>

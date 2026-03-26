@@ -61,7 +61,7 @@ export default async function AITestPage() {
                         {sub?.plan === 'pro' ? <CheckCircle2 className="text-[#01B574]" /> : <AlertCircle className="text-[#EE5D50]" />}
                     </div>
                     <h3 className="text-xl font-bold text-white mb-1">Subscription Tier</h3>
-                    <p className="text-[#a3aed1] text-sm mb-4">Auto-respond requires the "Pro" plan.</p>
+                    <p className="text-[#a3aed1] text-sm mb-4">Auto-respond requires the &quot;Pro&quot; plan.</p>
                     <div className="text-white font-mono text-sm bg-black/20 p-2 rounded">
                         Current: <span className="uppercase">{sub?.plan || 'Free'}</span>
                     </div>
